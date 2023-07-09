@@ -1,1 +1,30 @@
 @import "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css";
+
+@mixin pick($color) {
+    font-weight: bolder;
+
+    &:not(.selected) {
+        color: $color
+    }
+
+    &.selected {
+        background-color: $color;
+        color: white;
+    }
+}
+
+button.pick-green {
+    @include pick(green);
+}
+
+button.pick-red {
+    @include pick(red);
+}
+
+button.pick-blue {
+    @include pick(blue);
+}
+
+button.pick-black {
+    @include pick(black);
+}

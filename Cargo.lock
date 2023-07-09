@@ -588,6 +588,8 @@ dependencies = [
 name = "rummisolve"
 version = "0.0.3"
 dependencies = [
+ "js-sys",
+ "wasm-bindgen",
  "yew",
 ]
 
