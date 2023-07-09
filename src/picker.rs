@@ -1,12 +1,19 @@
 use yew::prelude::*;
 
+use crate::model::Color;
+
+#[derive(Properties, PartialEq)]
+pub struct PickerProps {
+    on_pick: Callback<()>,
+}
+
 #[function_component]
 pub fn Picker() -> Html {
-    let chosen_color = use_state_eq(|| "red".to_string());
+    let chosen_color = use_state_eq(|| Color::Red);
     let chosen_value = use_state_eq(|| 1);
     let choose_color = {
         let chosen_color = chosen_color.clone();
-        Callback::from(move |s: String| chosen_color.set(s))
+        Callback::from(move |s: Color| chosen_color.set(s))
     };
 
     let choose_value = {
@@ -14,17 +21,16 @@ pub fn Picker() -> Html {
         Callback::from(move |v: u32| chosen_value.set(v))
     };
 
-    let colors = ["red", "green", "blue", "black"];
+    let colors = Color::all();
 
     let panels = colors
-        .iter()
         .map(|col| {
             html! {
                 <div class = "level-item">
                     <ColorPick
                         choose_color = { choose_color.clone() }
-                        color = { col.to_string() }
-                        is_chosen = {col == &*chosen_color }
+                        color = { col }
+                        is_chosen = {col == *chosen_color }
                     />
                 </div>
             }
@@ -38,7 +44,7 @@ pub fn Picker() -> Html {
                 <div class = "level-item">
                     <ValuePick
                         {value}
-                        color = { chosen_color.to_string() }
+                        color = { *chosen_color }
                         choose_value = { choose_value.clone() }
                     />
                 </div>
@@ -62,7 +68,7 @@ pub fn Picker() -> Html {
 struct ValuePickProps {
     value: u32,
     choose_value: Callback<u32>,
-    color: AttrValue,
+    color: Color,
 }
 
 #[function_component]
@@ -74,7 +80,8 @@ fn ValuePick(props: &ValuePickProps) -> Html {
     } = props.clone();
 
     let onclick = Callback::from(move |_| choose_value.emit(value));
-    let class = classes!("button", format!("pick-{color}"));
+    let color_name = color.name();
+    let class = classes!("button", format!("pick-{color_name}"));
     html! {
         <button {onclick} {class}> {format!("{value}")} </button>
     }
@@ -82,8 +89,8 @@ fn ValuePick(props: &ValuePickProps) -> Html {
 
 #[derive(Properties, PartialEq, Clone)]
 struct ColorPanelProps {
-    choose_color: Callback<String>,
-    color: AttrValue,
+    choose_color: Callback<Color>,
+    color: Color,
     is_chosen: bool,
 }
 
@@ -94,16 +101,17 @@ fn ColorPick(props: &ColorPanelProps) -> Html {
         color,
         is_chosen,
     } = props.clone();
+    let color_name = color.name();
+
     let class = classes!(
         "button",
         is_chosen.then(|| "selected"),
-        format!("pick-{color}")
+        format!("pick-{color_name}")
     );
-    let text = color.to_string();
     let onclick = Callback::from(move |_| {
-        choose_color.emit(color.to_string());
+        choose_color.emit(color);
     });
     html! {
-        <button {onclick} {class}> { text } </button>
+        <button {onclick} {class}> { color_name } </button>
     }
 }

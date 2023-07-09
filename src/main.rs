@@ -1,5 +1,6 @@
 mod app;
 mod picker;
+mod model;
 
 use app::App;
 
