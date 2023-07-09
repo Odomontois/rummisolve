@@ -1,4 +1,5 @@
 mod app;
+mod color;
 
 use app::App;
 
