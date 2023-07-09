@@ -14,15 +14,15 @@
 }
 
 button.pick-green {
-    @include pick(green);
+    @include pick(rgb(10, 91, 10));
 }
 
 button.pick-red {
-    @include pick(red);
+    @include pick(rgb(162, 11, 11));
 }
 
 button.pick-blue {
-    @include pick(blue);
+    @include pick(rgb(11, 11, 219));
 }
 
 button.pick-black {

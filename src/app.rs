@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
 
-use crate::color::ColorChoose;
+use crate::picker::Picker;
 
 #[function_component(App)]
 pub fn app() -> Html {
@@ -9,7 +9,7 @@ pub fn app() -> Html {
         <main>
             <section class= "section is-large">
                 <h1 class="title">{ "Rummikub Solver" }</h1>
-                <ColorChoose />
+                <Picker />
             </section>
         </main>
     }
