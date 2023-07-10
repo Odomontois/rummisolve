@@ -1,6 +1,7 @@
 mod app;
-mod picker;
+mod views;
 mod model;
+mod utils;
 
 use app::App;
 

@@ -1,21 +1,17 @@
-use wasm_bindgen::prelude::*;
 use yew::prelude::*;
 
-use crate::picker::Picker;
+use crate::views::Pool;
 
-#[function_component(App)]
-pub fn app() -> Html {
+#[function_component]
+pub fn App() -> Html {
     html! {
         <main>
             <section class= "section is-large">
-                <h1 class="title">{ "Rummikub Solver" }</h1>
-                <Picker />
+                <h1 class="title">{ "Game game" }</h1>
+                <Pool />
             </section>
         </main>
     }
 }
 
-#[wasm_bindgen]
-extern "C" {
-    fn alert(s: &str);
-}
+
