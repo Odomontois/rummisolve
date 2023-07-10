@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, iter::from_fn};
 
 use super::Tile;
 
@@ -49,9 +49,19 @@ impl TileSet {
             }
         }
     }
+    fn unique_tiles(self) -> impl Iterator<Item = Tile> {
+        let mut bitmap = self.once;
+        from_fn(move || {
+            let tz = bitmap.trailing_zeros() as u64;
+            let tile = Tile::from_code(tz)?;
+            bitmap &= !(1 << tz);
+            Some(tile)
+        })
+    }
 
     pub fn tiles(self) -> impl Iterator<Item = Tile> {
-        Tile::all().flat_map(move |t| (0..self.amount(t)).map(move |_| t))
+        self.unique_tiles()
+            .flat_map(move |t| (0..self.amount(t)).map(move |_| t))
     }
 }
 
