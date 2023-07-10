@@ -1,3 +1,9 @@
+mod combinations;
+mod tileset;
+
+pub use tileset::TileSet;
+pub use combinations::all_combos;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum Color {
     #[default]
@@ -110,58 +116,5 @@ impl Tile {
         Color::all()
             .flat_map(move |color| Value::all().map(move |value| Self::Normal { color, value }))
             .chain([Self::Joker])
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
-pub struct TilePool {
-    once: u64,
-    twice: u64,
-}
-
-impl TilePool {
-    pub fn amount(self, tile: Tile) -> u8 {
-        let code_bit = 1 << tile.code();
-        if self.once & code_bit == 0 {
-            return 0;
-        }
-        if self.twice & code_bit == 0 {
-            return 1;
-        }
-        2
-    }
-
-    pub fn add(self, tile: Tile) -> Self {
-        let code_bit = 1 << tile.code();
-        if self.once & code_bit == 0 {
-            Self {
-                once: self.once | code_bit,
-                ..self
-            }
-        } else {
-            Self {
-                twice: self.twice | code_bit,
-                ..self
-            }
-        }
-    }
-
-    pub fn remove(self, tile: Tile) -> Self {
-        let code_bit = 1 << tile.code();
-        if self.twice & code_bit != 0 {
-            Self {
-                twice: self.twice & !code_bit,
-                ..self
-            }
-        } else {
-            Self {
-                once: self.once & !code_bit,
-                ..self
-            }
-        }
-    }
-
-    pub fn tiles(self) -> impl Iterator<Item = Tile> {
-        Tile::all().flat_map(move |t| (0..self.amount(t)).map(move |_| t))
     }
 }
