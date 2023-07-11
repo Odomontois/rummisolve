@@ -112,7 +112,7 @@ impl Tile {
         Some(Self::Normal { color, value })
     }
 
-	#[allow(unused)]
+    #[allow(unused)]
     pub fn all() -> impl Iterator<Item = Tile> {
         Color::all()
             .flat_map(move |color| Value::all().map(move |value| Self::Normal { color, value }))

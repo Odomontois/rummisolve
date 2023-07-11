@@ -2,12 +2,21 @@ use std::{collections::HashSet, hash::Hash};
 
 use super::{Color, Tile, TileSet, Value};
 
-#[allow(unused)]
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref ALL_COMBOS: Vec<TileSet> = gen_all_combos().collect();
+}
+
 pub fn all_combos() -> impl Iterator<Item = TileSet> {
+    ALL_COMBOS.iter().copied()
+}
+
+fn gen_all_combos() -> impl Iterator<Item = TileSet> {
     dedup(jokerless_combos().flat_map(jokerized))
 }
 
-fn dedup<A: Eq + Hash + Copy + 'static>(xs: impl Iterator<Item = A>) -> impl Iterator<Item = A> {
+fn dedup<A: Eq + Hash + Copy>(xs: impl Iterator<Item = A>) -> impl Iterator<Item = A> {
     xs.scan(HashSet::new(), |s, e| {
         let new = !s.contains(&e);
         s.insert(e);
