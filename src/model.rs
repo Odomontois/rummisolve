@@ -1,4 +1,5 @@
 mod combinations;
+mod solve;
 mod tileset;
 
 pub use combinations::all_combos;
@@ -90,25 +91,25 @@ pub enum Tile {
 }
 
 impl Tile {
-    const JOKER: u64 = 0;
+    const JOKER_CODE: u64 = 52;
+	pub const SIZE: usize = 53; 
 
     fn code(self) -> u64 {
         match self {
             Tile::Normal { color, value } => {
                 let color = color.code();
                 let value = value.value() as u64;
-                color << 4 | value
+                value * 4 + color
             }
-            Tile::Joker => Self::JOKER,
+            Tile::Joker => Self::JOKER_CODE,
         }
     }
-    #[allow(unused)]
     pub fn from_code(code: u64) -> Option<Self> {
-        if code == Self::JOKER {
+        if code == Self::JOKER_CODE {
             return Some(Self::Joker);
         }
-        let color = Color::from_code(code >> 4)?;
-        let value = Value::from_code(code & 0b1111)?;
+        let color = Color::from_code(code % 4)?;
+        let value = Value::from_code(code / 4)?;
         Some(Self::Normal { color, value })
     }
 

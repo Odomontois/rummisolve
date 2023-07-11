@@ -1,3 +1,4 @@
+use std::ops::{Add, Sub, AddAssign, SubAssign};
 use std::{cmp::Ordering, iter::from_fn};
 
 use super::Tile;
@@ -49,7 +50,7 @@ impl TileSet {
             }
         }
     }
-    fn unique_tiles(self) -> impl Iterator<Item = Tile> {
+    pub fn unique_tiles(self) -> impl Iterator<Item = Tile> {
         let mut bitmap = self.once;
         from_fn(move || {
             let tz = bitmap.trailing_zeros() as u64;
@@ -63,6 +64,10 @@ impl TileSet {
         self.unique_tiles()
             .flat_map(move |t| (0..self.amount(t)).map(move |_| t))
     }
+
+	pub fn is_empty(self) -> bool {
+		self.once == 0 && self.twice == 0
+	}
 }
 
 impl FromIterator<Tile> for TileSet {
@@ -89,3 +94,61 @@ impl PartialOrd for TileSet {
         }
     }
 }
+
+impl Add for TileSet {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let once = self.once | rhs.once;
+        let twice = self.twice | rhs.twice | (self.once & rhs.once);
+        Self { once, twice }
+    }
+}
+
+
+
+impl Sub for TileSet {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        let twice = self.twice & (!rhs.once);
+        let once = (self.once & (!rhs.once)) | (self.twice & (!rhs.twice));
+        Self { once, twice }
+    }
+}
+
+impl Add<Tile> for TileSet {
+	type Output = Self;
+
+	fn add(self, rhs: Tile) -> Self::Output {
+		self.add(rhs)
+	}
+}
+
+impl AddAssign<Tile> for TileSet {
+	fn add_assign(&mut self, rhs: Tile) {
+		*self = self.add(rhs);
+	}
+}
+
+impl Sub<Tile> for TileSet {
+	type Output = Self;
+
+	fn sub(self, rhs: Tile) -> Self::Output {
+		self.remove(rhs)
+	}
+}
+
+impl SubAssign<Tile> for TileSet {
+	fn sub_assign(&mut self, rhs: Tile) {
+		*self = self.remove(rhs);
+	}
+}
+
+
+// #[cfg(test)]
+// fn random_sub_self(){
+
+// }
+
+
