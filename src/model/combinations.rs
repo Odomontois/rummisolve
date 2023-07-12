@@ -38,16 +38,16 @@ fn jokerized(combo: TileSet) -> impl Iterator<Item = TileSet> {
 
 fn single_joker(combo: TileSet) -> impl Iterator<Item = TileSet> {
     combo
-        .tiles()
+        .into_iter()
         .map(move |tile| combo.remove(tile).add(Tile::Joker))
 }
 
 fn double_joker(combo: TileSet) -> impl Iterator<Item = TileSet> {
     combo
-        .tiles()
+        .into_iter()
         .flat_map(move |t1| {
             combo
-                .tiles()
+                .into_iter()
                 .filter_map(move |t2| (t1 < t2).then(|| (t1, t2)))
         })
         .map(move |(t1, t2)| {

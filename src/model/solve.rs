@@ -5,15 +5,16 @@ use super::{all_combos, Tile, TileSet};
 #[allow(unused)]
 pub fn solve(pool: TileSet) -> Option<Vec<TileSet>> {
     let mut solve = Solve::new(pool);
-    solve.solve().then(|| solve.accum)
+    solve.solve()?;
+    Some(solve.accum)
 }
 
+#[derive(Debug)]
 struct Solve {
     accum: Vec<TileSet>,
     pool: TileSet,
     combos_by_tile: [Vec<TileSet>; Tile::SIZE],
     avail_combos: [u16; Tile::SIZE],
-    tiles_by_combo_count: Vec<TileSet>,
 }
 
 impl Solve {
@@ -26,11 +27,6 @@ impl Solve {
             }
         }
         let max_combo_count = combos_by_tile.iter().map(|v| v.len()).max().unwrap_or(0);
-        let mut tiles_by_combo_count = vec![TileSet::default(); max_combo_count + 1];
-        for (i, combos) in combos_by_tile.iter().enumerate() {
-            let tile = Tile::from_code(i as u64).unwrap();
-            tiles_by_combo_count[combos.len()] += tile;
-        }
 
         let accum = Vec::new();
         let avail_combos = from_fn(|i| combos_by_tile[i].len() as u16);
@@ -40,15 +36,34 @@ impl Solve {
             pool,
             avail_combos,
             combos_by_tile,
-            tiles_by_combo_count,
         }
     }
 
-    pub fn solve(&mut self) -> bool {
-		if !self.tiles_by_combo_count[0].is_empty() {
-			return false
-		}
-        false
+    fn check_fail(&self) -> Option<()> {
+        (!self.tiles_by_combo_count[0].is_empty()).then_some(())
+    }
+
+    fn normalize(&mut self) -> Option<()> {
+        self.check_fail()?;
+        while let Some(c) = self.tiles_by_combo_count[1].tiles().next() {
+            let combo = self.combos_by_tile[c.code() as usize][0];
+            self.apply_combo(combo)?;
+            self.check_fail()?;
+        }
+
+        None
+    }
+
+    fn solve(&mut self) -> Option<()> {
+        self.normalize()?;
+
+        None
+    }
+
+    fn apply_combo(&mut self, combo: TileSet) -> Option<()> {
+		self.pool -= combo;
+		self.accum.push(combo);
+        todo!()
     }
 }
 

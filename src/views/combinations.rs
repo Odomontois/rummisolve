@@ -21,6 +21,7 @@ pub fn Combinations(props: &Props) -> Html {
     let content = if *show {
         let combinations = all_combos().filter(|ts| ts <= &tiles);
         let combinations = combinations.map(|tiles| {
+            log::info!("{tiles:?}");
             html! {
                 <TileLine {tiles} />
             }

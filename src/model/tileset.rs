@@ -1,9 +1,10 @@
-use std::ops::{Add, Sub, AddAssign, SubAssign};
+use std::fmt::Debug;
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::{cmp::Ordering, iter::from_fn};
 
 use super::Tile;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub struct TileSet {
     once: u64,
     twice: u64,
@@ -60,14 +61,9 @@ impl TileSet {
         })
     }
 
-    pub fn tiles(self) -> impl Iterator<Item = Tile> {
-        self.unique_tiles()
-            .flat_map(move |t| (0..self.amount(t)).map(move |_| t))
+    pub fn is_empty(self) -> bool {
+        self.once == 0 && self.twice == 0
     }
-
-	pub fn is_empty(self) -> bool {
-		self.once == 0 && self.twice == 0
-	}
 }
 
 impl FromIterator<Tile> for TileSet {
@@ -105,8 +101,6 @@ impl Add for TileSet {
     }
 }
 
-
-
 impl Sub for TileSet {
     type Output = Self;
 
@@ -117,38 +111,70 @@ impl Sub for TileSet {
     }
 }
 
-impl Add<Tile> for TileSet {
-	type Output = Self;
+impl SubAssign for TileSet {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = self.sub(rhs);
+    }
+}
 
-	fn add(self, rhs: Tile) -> Self::Output {
-		self.add(rhs)
-	}
+impl Add<Tile> for TileSet {
+    type Output = Self;
+
+    fn add(self, rhs: Tile) -> Self::Output {
+        self.add(rhs)
+    }
 }
 
 impl AddAssign<Tile> for TileSet {
-	fn add_assign(&mut self, rhs: Tile) {
-		*self = self.add(rhs);
-	}
+    fn add_assign(&mut self, rhs: Tile) {
+        *self = self.add(rhs);
+    }
 }
 
 impl Sub<Tile> for TileSet {
-	type Output = Self;
+    type Output = Self;
 
-	fn sub(self, rhs: Tile) -> Self::Output {
-		self.remove(rhs)
-	}
+    fn sub(self, rhs: Tile) -> Self::Output {
+        self.remove(rhs)
+    }
 }
 
 impl SubAssign<Tile> for TileSet {
-	fn sub_assign(&mut self, rhs: Tile) {
-		*self = self.remove(rhs);
-	}
+    fn sub_assign(&mut self, rhs: Tile) {
+        *self = self.remove(rhs);
+    }
 }
 
+impl Debug for TileSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(*self).finish()
+    }
+}
 
-// #[cfg(test)]
-// fn random_sub_self(){
+impl IntoIterator for TileSet {
+    type Item = Tile;
 
-// }
+    type IntoIter = Tiles;
 
+    fn into_iter(self) -> Self::IntoIter {
+        Tiles(self)
+    }
+}
 
+pub struct Tiles(TileSet);
+
+impl Iterator for Tiles {
+    type Item = Tile;
+
+    fn next(&mut self) -> Option<Tile> {
+        let tz = self.0.once.trailing_zeros() as u64;
+        let tile = Tile::from_code(tz)?;
+        let bit = 1 << tz;
+        if (self.0.twice & bit) != 0 {
+            self.0.twice ^= bit;
+        } else {
+            self.0.once ^= bit;
+        }
+        Some(tile)
+    }
+}
