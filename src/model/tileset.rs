@@ -11,6 +11,10 @@ pub struct TileSet {
 }
 
 impl TileSet {
+    pub fn cointains(self, tile: Tile) -> bool {
+        self.once & 1 << tile.code() != 0
+    }
+
     pub fn amount(self, tile: Tile) -> u8 {
         let code_bit = 1 << tile.code();
         if self.once & code_bit == 0 {
