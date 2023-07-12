@@ -2,10 +2,37 @@
     <meta charset="utf-8">
     <title>Rummisolve</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/index-4acdcf6683b1da10.css">
+    <link rel="stylesheet" href="/rummisolve/index-90b8c06572e7f104.css">
     <script src="https://kit.fontawesome.com/82eb17321e.js" crossorigin="anonymous"></script>
   
-<link rel="preload" href="/rummisolve-848fd6bd78ac2482_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
-<link rel="modulepreload" href="/rummisolve-848fd6bd78ac2482.js"></head>
+<link rel="preload" href="/rummisolve/rummisolve-e9d67e165dc6ea6f_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
+<link rel="modulepreload" href="/rummisolve/rummisolve-e9d67e165dc6ea6f.js"></head>
 <body>
-<script type="module">import init from '/rummisolve-848fd6bd78ac2482.js';init('/rummisolve-848fd6bd78ac2482_bg.wasm');</script></body></html>
+<script type="module">import init from '/rummisolve/rummisolve-e9d67e165dc6ea6f.js';init('/rummisolve/rummisolve-e9d67e165dc6ea6f_bg.wasm');</script><script>(function () {
+    var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var url = protocol + '//' + window.location.host + '/_trunk/ws';
+    var poll_interval = 5000;
+    var reload_upon_connect = () => {
+        window.setTimeout(
+            () => {
+                // when we successfully reconnect, we'll force a
+                // reload (since we presumably lost connection to
+                // trunk due to it being killed, so it will have
+                // rebuilt on restart)
+                var ws = new WebSocket(url);
+                ws.onopen = () => window.location.reload();
+                ws.onclose = reload_upon_connect;
+            },
+            poll_interval);
+    };
+
+    var ws = new WebSocket(url);
+    ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.reload) {
+            window.location.reload();
+        }
+    };
+    ws.onclose = reload_upon_connect;
+})()
+</script></body></html>

@@ -1,0 +1,44 @@
+@import "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css";
+button.pick-green {
+  font-weight: bolder;
+}
+button.pick-green:not(.selected) {
+  color: rgb(10, 91, 10);
+}
+button.pick-green.selected {
+  background-color: rgb(10, 91, 10);
+  color: white;
+}
+
+button.pick-red {
+  font-weight: bolder;
+}
+button.pick-red:not(.selected) {
+  color: rgb(162, 11, 11);
+}
+button.pick-red.selected {
+  background-color: rgb(162, 11, 11);
+  color: white;
+}
+
+button.pick-blue {
+  font-weight: bolder;
+}
+button.pick-blue:not(.selected) {
+  color: rgb(11, 11, 219);
+}
+button.pick-blue.selected {
+  background-color: rgb(11, 11, 219);
+  color: white;
+}
+
+button.pick-black {
+  font-weight: bolder;
+}
+button.pick-black:not(.selected) {
+  color: black;
+}
+button.pick-black.selected {
+  background-color: black;
+  color: white;
+}
