@@ -3,6 +3,7 @@ mod combinations;
 mod tile;
 mod tileset;
 mod debug;
+#[allow(unused)]
 mod solver;
 
 pub use combinations::all_combos;

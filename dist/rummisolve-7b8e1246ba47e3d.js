@@ -604,12 +604,12 @@ function __wbg_get_imports() {
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
         throw new Error(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbindgen_closure_wrapper5924 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 525, __wbg_adapter_16);
+    imports.wbg.__wbindgen_closure_wrapper6051 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 532, __wbg_adapter_16);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_closure_wrapper6146 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 541, __wbg_adapter_19);
+    imports.wbg.__wbindgen_closure_wrapper6273 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 548, __wbg_adapter_19);
         return addHeapObject(ret);
     };
 
@@ -651,7 +651,7 @@ async function __wbg_init(input) {
     if (wasm !== undefined) return wasm;
 
     if (typeof input === 'undefined') {
-        input = new URL('rummisolve-e9d67e165dc6ea6f_bg.wasm', import.meta.url);
+        input = new URL('rummisolve-7b8e1246ba47e3d_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

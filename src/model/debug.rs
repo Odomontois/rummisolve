@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::model::{all_combos, TileSet};
 
 use super::Tile;
@@ -12,13 +14,27 @@ pub fn debug_info() -> Vec<[String; 2]> {
                 .filter(|c: &TileSet| !c.cointains(Tile::Joker))
                 .count(),
         ),
-		item(
+        item(
             "Jokerless assignment count",
             all_combos()
                 .filter(|c: &TileSet| !c.cointains(Tile::Joker))
-				.flatten()
+                .flatten()
                 .count(),
-        )
+        ),
+        item("Maximum combos per tile (No Joker)", {
+            let mut count = HashMap::new();
+            for tile in all_combos().flatten().filter(|x| x != &Tile::Joker) {
+                *count.entry(tile).or_insert(0) += 1;
+            }
+            count.values().copied().max().unwrap_or(0)
+        }),
+        item("Minimum combos per tile (No Joker)", {
+            let mut count = HashMap::new();
+            for tile in all_combos().flatten().filter(|x| x != &Tile::Joker) {
+                *count.entry(tile).or_insert(0) += 1;
+            }
+            count.values().copied().min().unwrap_or(0)
+        }),
     ]
     .into()
 }
