@@ -1,26 +1,20 @@
-use std::{collections::HashMap, default, hash::Hash};
+use std::{collections::HashMap, hash::Hash};
 
 use derivative::Derivative;
 
 #[derive(Default, Debug, Clone, Copy)]
-struct ElementInfo<E, I> {
-    element: E,
-    sets: I,
+struct Header<E, I> {
+    value: E,
+    first: I,
     amount: usize,
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-struct SetInfo<E, I> {
-    set: E,
-    elements: I,
 }
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default(bound = ""))]
 struct DancingLinks<I: Addressable, S, E> {
-    sets: Vec<SetInfo<S, I>>,
-    elements: Vec<ElementInfo<E, I>>,
-    cards: Vec<Card<I>>,
+    sets: Vec<Header<S, I>>,
+    elements: Vec<Header<E, I>>,
+    cells: Vec<Cell<I>>,
     backstack: Vec<I>,
 }
 
@@ -30,24 +24,19 @@ impl<I: Addressable, S, E> DancingLinks<I, S, E> {
         S: Clone + Hash + Eq,
         E: Clone + Hash + Eq,
     {
-        let mut builder = DancingLinksBuilder::default();
-
-        for (elem, count) in pool {
-            builder.add_elem(elem, count);
-        }
+        let mut dl = Self::default();
+        let mut builder = builder::DancingLinksBuilder::new(&mut dl);
 
         for (set, elem) in xs {
             builder.add_link(set, elem);
         }
 
-        builder.dl
+        dl
     }
-
-    // fn add
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-struct Card<I: Addressable> {
+struct Cell<I: Addressable> {
     prev_element: I,
     next_element: I,
     prev_set: I,
@@ -79,66 +68,80 @@ impl Addressable for u32 {
     const NULL: u32 = !0;
 }
 
-#[derive(Derivative, Debug, Clone)]
-#[derivative(Default(bound = ""))]
-struct DancingLinksBuilder<I: Addressable, S, E> {
-    dl: DancingLinks<I, S, E>,
-    elem_map: HashMap<E, usize>,
-    set_map: HashMap<S, usize>,
-}
+mod builder {
+    use std::{collections::HashMap, hash::Hash};
 
-impl<I: Addressable, S: Eq + Hash + Clone, E: Eq + Hash + Clone> DancingLinksBuilder<I, S, E> {
-    fn get_elem(&mut self, elem: E) -> usize {
-        let i = *self.elem_map.entry(elem.clone()).or_insert_with(|| {
-            let i = self.dl.elements.len();
-            self.dl.elements.push(ElementInfo {
-                element: elem,
-                sets: I::NULL,
-                amount: 0,
+    use super::*;
+
+    #[derive(Debug)]
+    pub(super) struct DancingLinksBuilder<'a, I: Addressable, S, E> {
+        dl: &'a mut DancingLinks<I, S, E>,
+        elem_map: HashMap<E, usize>,
+        set_map: HashMap<S, usize>,
+    }
+
+    struct Getter<'a, X, I> {
+        headers: &'a mut Vec<Header<X, I>>,
+        map: &'a mut HashMap<X, usize>,
+    }
+
+    impl<'a, X, I: Addressable> Getter<'a, X, I> {
+        fn new(headers: &'a mut Vec<Header<X, I>>, map: &'a mut HashMap<X, usize>) -> Self {
+            Self { headers, map }
+        }
+
+        fn insert(&mut self, x: X, new: I) -> (I, I)
+        where
+            X: Clone + Hash + Eq,
+        {
+            let j = *self.map.entry(x.clone()).or_insert_with(|| {
+                let i = self.headers.len();
+                self.headers.push(Header {
+                    value: x,
+                    first: I::NULL,
+                    amount: 0,
+                });
+                i
             });
-            i
-        });
-        i
+            let old = self.headers[j].first;
+            self.headers[j].first = new;
+            (I::from_address(j), old)
+        }
     }
 
-    fn add_elem(&mut self, elem: E, count: usize) {
-        let i = self.get_elem(elem);
-        self.dl.elements[i].amount += count;
-    }
+    impl<'a, I: Addressable, S: Eq + Hash + Clone, E: Eq + Hash + Clone>
+        DancingLinksBuilder<'a, I, S, E>
+    {
+        pub(super) fn new(dl: &'a mut DancingLinks<I, S, E>) -> Self {
+            Self {
+                dl,
+                elem_map: HashMap::new(),
+                set_map: HashMap::new(),
+            }
+        }
 
-    fn get_state(&mut self, state: S) -> usize {
-        let i = *self.set_map.entry(state.clone()).or_insert_with(|| {
-            let i = self.dl.sets.len();
-            self.dl.sets.push(SetInfo {
-                set: state,
-                elements: I::NULL,
+        fn sets_elems(&mut self) -> (Getter<S, I>, Getter<E, I>) {
+            (
+                Getter::new(&mut self.dl.sets, &mut self.set_map),
+                Getter::new(&mut self.dl.elements, &mut self.elem_map),
+            )
+        }
+
+        pub(super) fn add_link(&mut self, set: S, elem: E) {
+            let i = I::from_address(self.dl.cells.len());
+            let (mut sets, mut elems) = self.sets_elems();
+            let (set, next_set) = sets.insert(set, i);
+            let (element, next_element) = elems.insert(elem, i);
+            let (prev_element, prev_set) = (I::NULL, I::NULL);
+
+            self.dl.cells.push(Cell {
+                prev_element,
+                next_element,
+                prev_set,
+                next_set,
+                set,
+                element,
             });
-            i
-        });
-        i
+        }
     }
-
-    fn add_link(&mut self, state: S, elem: E) {
-        let si = self.get_state(state);
-        let ei = self.get_elem(elem);
-        let card = Card {
-            prev_element: I::NULL,
-            next_element: self.dl.sets[si].elements,
-            prev_set: I::NULL,
-            next_set: self.dl.elements[ei].sets,
-            set: I::from_address(si),
-            element: I::from_address(ei),
-        };
-        let i = I::from_address(self.dl.cards.len());
-        self.dl.cards.push(card);
-        self.dl.sets[si].elements = i;
-        self.dl.elements[ei].sets = i;
-    }
-}
-
-#[test]
-#[ignore]
-fn check() {
-    println!("{}", std::mem::size_of::<Card<u16>>());
-    println!("{}", std::mem::size_of::<Card<u32>>());
 }

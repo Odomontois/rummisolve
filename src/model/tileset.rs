@@ -10,6 +10,7 @@ pub struct TileSet {
     twice: u64,
 }
 
+#[allow(unused)]
 impl TileSet {
     pub fn cointains(self, tile: Tile) -> bool {
         self.once & 1 << tile.code() != 0
