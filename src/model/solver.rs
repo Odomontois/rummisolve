@@ -33,6 +33,8 @@ impl<I: Addressable, S, E> DancingLinks<I, S, E> {
 
         dl
     }
+
+    fn remove(&mut self, i: I) {}
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -45,7 +47,7 @@ struct Cell<I: Addressable> {
     element: I,
 }
 
-trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> {
+trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> + 'static {
     const NULL: Self;
     fn address(self) -> Option<usize> {
         if self == Self::NULL {
@@ -60,18 +62,69 @@ trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> {
     }
 }
 
-impl Addressable for u16 {
-    const NULL: u16 = !0;
+macro_rules! impl_addressable {
+    ($($t:ty),*) => {
+        $(
+            impl Addressable for $t {
+                const NULL: $t = !0;
+            }
+        )*
+    };
 }
 
-impl Addressable for u32 {
-    const NULL: u32 = !0;
+impl_addressable!(u8, u16, u32, u64, usize);
+
+trait Dimension<T> {
+    type Data;
+    type I: Addressable;
+    type Links;
+}
+
+struct Elements;
+
+impl<'a, I: Addressable, S: 'a, E: 'a> Dimension<(&'a (), I, S, E)> for Elements {
+    type Data = E;
+    type I = I;
+    type Links = DancingLinks<I, S, E>;
+}
+
+struct Sets;
+
+impl<'a, I: Addressable, S: 'a, E: 'a> Dimension<(&'a (), I, S, E)> for Sets {
+    type Data = S;
+    type I = I;
+    type Links = DancingLinks<I, S, E>;
 }
 
 mod builder {
     use std::{collections::HashMap, hash::Hash};
 
     use super::*;
+    trait BuilderDimension<T>: Dimension<T> {
+        type Builder;
+        fn mut_builder(self, builder: &mut Self::Builder) -> builder::Getter<Self::Data, Self::I>;
+    }
+    impl<'a, I: Addressable, S: 'a, E: 'a> BuilderDimension<(&'a (), I, S, E)> for Elements {
+        type Builder = builder::DancingLinksBuilder<'a, I, S, E>;
+
+        fn mut_builder(self, builder: &mut Self::Builder) -> builder::Getter<Self::Data, Self::I> {
+            Getter {
+                headers: &mut builder.dl.elements,
+                map: &mut builder.elem_map,
+            }
+        }
+    }
+
+    impl<'a, I: Addressable, S: 'a, E: 'a> BuilderDimension<(&'a (), I, S, E)> for Sets {
+        type Builder = builder::DancingLinksBuilder<'a, I, S, E>;
+
+        fn mut_builder(self, builder: &mut Self::Builder) -> builder::Getter<Self::Data, Self::I> {
+            Getter {
+                headers: &mut builder.dl.sets,
+                map: &mut builder.set_map,
+            }
+        }
+    }
 
     #[derive(Debug)]
     pub(super) struct DancingLinksBuilder<'a, I: Addressable, S, E> {
@@ -120,6 +173,10 @@ mod builder {
             }
         }
 
+        fn dimension<D: BuilderDimension<(&'a (), I, S, E), Builder = Self>>(&mut self, d: D) -> Getter<D::Data, D::I>{
+            d.mut_builder(self)
+        } 
+
         fn sets_elems(&mut self) -> (Getter<S, I>, Getter<E, I>) {
             (
                 Getter::new(&mut self.dl.sets, &mut self.set_map),
@@ -129,9 +186,8 @@ mod builder {
 
         pub(super) fn add_link(&mut self, set: S, elem: E) {
             let i = I::from_address(self.dl.cells.len());
-            let (mut sets, mut elems) = self.sets_elems();
-            let (set, next_set) = sets.insert(set, i);
-            let (element, next_element) = elems.insert(elem, i);
+            let (set, next_set) = self.dimension(Sets).insert(set, i);
+            let (element, next_element) = self.dimension(Elements).insert(elem, i);
             let (prev_element, prev_set) = (I::NULL, I::NULL);
 
             self.dl.cells.push(Cell {
