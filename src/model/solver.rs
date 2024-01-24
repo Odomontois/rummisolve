@@ -33,8 +33,21 @@ impl<I: Addressable, S, E> DancingLinks<I, S, E> {
 
         dl
     }
+    fn cell(&self, i: I) -> Option<&Cell<I>> {
+        i.address().map(|i| &self.cells[i])
+    }
 
-    fn remove(&mut self, i: I) {}
+    fn cell_mut(&mut self, i: I) -> Option<&mut Cell<I>> {
+        i.address().map(move |i| &mut self.cells[i])
+    }
+
+    fn remove(&mut self, i: I, d: impl Dimension) {
+        let Some(&cur) = self.cell(i) else { return };
+        if let Some(prev) = self.cell_mut(cur.prev(d)) {
+            *prev.next_mut(d) = cur.next(d);
+        } else {}
+
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -45,6 +58,24 @@ struct Cell<I: Addressable> {
     next_set: I,
     set: I,
     element: I,
+}
+
+impl<I: Addressable> Cell<I> {
+    fn prev(&self, d: impl Dimension) -> I {
+        d.of_same(self.prev_set, self.prev_element)
+    }
+
+    fn prev_mut(&mut self, d: impl Dimension) -> &mut I {
+        d.of_same(&mut self.prev_set, &mut self.prev_element)
+    }
+
+    fn next(&self, d: impl Dimension) -> I {
+        d.of_same(self.next_set, self.next_element)
+    }
+
+    fn next_mut(&mut self, d: impl Dimension) -> &mut I {
+        d.of_same(&mut self.next_set, &mut self.next_element)
+    }
 }
 
 trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> + 'static {
@@ -74,57 +105,53 @@ macro_rules! impl_addressable {
 
 impl_addressable!(u8, u16, u32, u64, usize);
 
-trait Dimension<T> {
-    type Data;
-    type I: Addressable;
-    type Links;
+trait Dimension: Copy {
+    type Out<S, E>;
+    fn dim<S, E>(la: impl FnOnce() -> S, lb: impl FnOnce() -> E) -> Self::Out<S, E>;
+    fn dim_same<A>(la: impl FnOnce() -> A, lb: impl FnOnce() -> A) -> A;
+    fn dimension<S, E>(a: S, b: E) -> Self::Out<S, E> {
+        Self::dim(|| a, || b)
+    }
+
+    fn of<S, E>(self, a: S, b: E) -> Self::Out<S, E> {
+        Self::dimension(a, b)
+    }
+
+    fn of_same<A>(self, a: A, b: A) -> A {
+        Self::dim_same(|| a, || b)
+    }
 }
 
+#[derive(Clone, Copy)]
 struct Elements;
 
-impl<'a, I: Addressable, S: 'a, E: 'a> Dimension<(&'a (), I, S, E)> for Elements {
-    type Data = E;
-    type I = I;
-    type Links = DancingLinks<I, S, E>;
+impl Dimension for Elements {
+    type Out<S, E> = E;
+    fn dim<S, E>(la: impl FnOnce() -> S, lb: impl FnOnce() -> E) -> Self::Out<S, E> {
+        lb()
+    }
+    fn dim_same<A>(la: impl FnOnce() -> A, lb: impl FnOnce() -> A) -> A {
+        lb()
+    }
 }
 
+#[derive(Clone, Copy)]
 struct Sets;
 
-impl<'a, I: Addressable, S: 'a, E: 'a> Dimension<(&'a (), I, S, E)> for Sets {
-    type Data = S;
-    type I = I;
-    type Links = DancingLinks<I, S, E>;
+impl Dimension for Sets {
+    type Out<S, E> = S;
+    fn dim<S, E>(la: impl FnOnce() -> S, lb: impl FnOnce() -> E) -> Self::Out<S, E> {
+        la()
+    }
+    fn dim_same<A>(la: impl FnOnce() -> A, lb: impl FnOnce() -> A) -> A {
+        la()
+    }
 }
 
 mod builder {
     use std::{collections::HashMap, hash::Hash};
 
     use super::*;
-    trait BuilderDimension<T>: Dimension<T> {
-        type Builder;
-        fn mut_builder(self, builder: &mut Self::Builder) -> builder::Getter<Self::Data, Self::I>;
-    }
-    impl<'a, I: Addressable, S: 'a, E: 'a> BuilderDimension<(&'a (), I, S, E)> for Elements {
-        type Builder = builder::DancingLinksBuilder<'a, I, S, E>;
-
-        fn mut_builder(self, builder: &mut Self::Builder) -> builder::Getter<Self::Data, Self::I> {
-            Getter {
-                headers: &mut builder.dl.elements,
-                map: &mut builder.elem_map,
-            }
-        }
-    }
-
-    impl<'a, I: Addressable, S: 'a, E: 'a> BuilderDimension<(&'a (), I, S, E)> for Sets {
-        type Builder = builder::DancingLinksBuilder<'a, I, S, E>;
-
-        fn mut_builder(self, builder: &mut Self::Builder) -> builder::Getter<Self::Data, Self::I> {
-            Getter {
-                headers: &mut builder.dl.sets,
-                map: &mut builder.set_map,
-            }
-        }
-    }
 
     #[derive(Debug)]
     pub(super) struct DancingLinksBuilder<'a, I: Addressable, S, E> {
@@ -173,12 +200,11 @@ mod builder {
             }
         }
 
-        fn dimension<D: BuilderDimension<(&'a (), I, S, E), Builder = Self>>(&mut self, d: D) -> Getter<D::Data, D::I>{
-            d.mut_builder(self)
-        } 
-
-        fn sets_elems(&mut self) -> (Getter<S, I>, Getter<E, I>) {
-            (
+        fn dimension<'b, D: Dimension>(
+            &'b mut self,
+            d: D,
+        ) -> D::Out<Getter<'b, S, I>, Getter<'b, E, I>> {
+            D::dimension(
                 Getter::new(&mut self.dl.sets, &mut self.set_map),
                 Getter::new(&mut self.dl.elements, &mut self.elem_map),
             )
