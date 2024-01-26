@@ -49,6 +49,14 @@ pub(crate) trait Dimension: Copy {
         Self::choose::<F, L, R>(|| ll, || lr)
     }
 
+    fn val<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
+        self,
+        a: F::Out<L>,
+        b: F::Out<R>,
+    ) -> F::Out<Self::Out<'a, L, R>> {
+        Self::choose_val::<F, L, R>(a, b)
+    }
+
     fn of<'a, L: 'a, R: 'a>(&self, a: L, b: R) -> Self::Out<'a, L, R> {
         Self::choose_val::<(), _, _>(a, b)
     }

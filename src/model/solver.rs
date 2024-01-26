@@ -141,15 +141,11 @@ mod builder {
         where
             D::Out<'b, S, E>: Clone + Hash + Eq,
         {
-            let headers = D::choose_val::<(&'b mut (), Vec<()>, Header<(), I>), _, _>(
-                &mut self.dl.sets,
-                &mut self.dl.elements,
-            );
+            type HeaderHK<'b, I> = (&'b mut (), Vec<()>, Header<(), I>);
+            let headers = d.val::<HeaderHK<'b, I>, _, _>(&mut self.dl.sets, &mut self.dl.elements);
 
-            let map = D::choose_val::<(&'b mut (), At<HashMap<(), usize>, First>), _, _>(
-                &mut self.set_map,
-                &mut self.elem_map,
-            );
+            type MapHK<'b> = (&'b mut (), At<HashMap<(), usize>, First>);
+            let map = d.val::<MapHK, _, _>(&mut self.set_map, &mut self.elem_map);
 
             let j = *map.entry(x.clone()).or_insert_with(|| {
                 let i = headers.len();
