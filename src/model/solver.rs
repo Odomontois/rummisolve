@@ -126,39 +126,6 @@ mod builder {
         set_map: HashMap<S, usize>,
     }
 
-    struct Getter<'a, X, I> {
-        headers: &'a mut Vec<Header<X, I>>,
-        map: &'a mut HashMap<X, usize>,
-    }
-
-    impl<'a, I> TypeConstructor<'a> for Getter<'a, (), I> {
-        type Out<T: 'a> = Getter<'a, T, I>;
-    }
-
-    impl<'a, X, I: Addressable> Getter<'a, X, I> {
-        fn new(headers: &'a mut Vec<Header<X, I>>, map: &'a mut HashMap<X, usize>) -> Self {
-            Self { headers, map }
-        }
-
-        fn insert(&mut self, x: X, new: I) -> (I, I)
-        where
-            X: Clone + Hash + Eq,
-        {
-            let j = *self.map.entry(x.clone()).or_insert_with(|| {
-                let i = self.headers.len();
-                self.headers.push(Header {
-                    value: x,
-                    first: I::NULL,
-                    amount: 0,
-                });
-                i
-            });
-            let old = self.headers[j].first;
-            self.headers[j].first = new;
-            (I::from_address(j), old)
-        }
-    }
-
     impl<'a, I: Addressable, S: Eq + Hash + Clone, E: Eq + Hash + Clone>
         DancingLinksBuilder<'a, I, S, E>
     {
@@ -170,22 +137,41 @@ mod builder {
             }
         }
 
-        fn dimension<'b, D: Dimension>(&'b mut self, d: D) -> Getter<'b, D::Out<'b, S, E>, I> {
+        fn insert<'b, D: Dimension>(&'b mut self, d: D, x: D::Out<'b, S, E>, new: I) -> (I, I)
+        where
+            D::Out<'b, S, E>: Clone + Hash + Eq,
+        {
             let headers = D::choose_val::<(&'b mut (), Vec<()>, Header<(), I>), _, _>(
                 &mut self.dl.sets,
                 &mut self.dl.elements,
             );
+
             let map = D::choose_val::<(&'b mut (), At<HashMap<(), usize>, First>), _, _>(
                 &mut self.set_map,
                 &mut self.elem_map,
             );
-            Getter::new(headers, map)
+
+            let j = *map.entry(x.clone()).or_insert_with(|| {
+                let i = headers.len();
+                headers.push(Header {
+                    value: x,
+                    first: I::NULL,
+                    amount: 0,
+                });
+                i
+            });
+
+            headers[j].first = new;
+
+            let old = headers[j].first;
+
+            (I::from_address(j), old)
         }
 
         pub(super) fn add_link(&mut self, set: S, elem: E) {
             let i = I::from_address(self.dl.cells.len());
-            let (set, next_set) = self.dimension(Sets).insert(set, i);
-            let (element, next_element) = self.dimension(Elements).insert(elem, i);
+            let (set, next_set) = self.insert(Sets, set, i);
+            let (element, next_element) = self.insert(Elements, elem, i);
             let (prev_element, prev_set) = (I::NULL, I::NULL);
 
             self.dl.cells.push(Cell {
