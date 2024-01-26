@@ -1,5 +1,7 @@
+use crate::utils::hkt::{
+    Dimension, First as Sets, First, Second as Elements, Second, TypeConstructor,
+};
 use std::{collections::HashMap, hash::Hash};
-use crate::utils::hkt::{First as Sets, Second as Elements, Dimension};
 
 use derivative::Derivative;
 
@@ -8,6 +10,10 @@ struct Header<E, I> {
     value: E,
     first: I,
     amount: usize,
+}
+
+impl<'a, I: 'a> TypeConstructor<'a> for Header<(), I> {
+    type Out<T: 'a> = Header<T, I>;
 }
 
 #[derive(Debug, Clone, Derivative)]
@@ -46,8 +52,8 @@ impl<I: Addressable, S, E> DancingLinks<I, S, E> {
         let Some(&cur) = self.cell(i) else { return };
         if let Some(prev) = self.cell_mut(cur.prev(d)) {
             *prev.next_mut(d) = cur.next(d);
-        } else {}
-
+        } else {
+        }
     }
 }
 
@@ -106,12 +112,10 @@ macro_rules! impl_addressable {
 
 impl_addressable!(u8, u16, u32, u64, usize);
 
-
-
 mod builder {
     use std::{collections::HashMap, hash::Hash};
 
-    use crate::utils::hkt::TypeConstructor;
+    use crate::utils::hkt::{At, TypeConstructor};
 
     use super::*;
 
@@ -127,7 +131,7 @@ mod builder {
         map: &'a mut HashMap<X, usize>,
     }
 
-    impl <'a, I> TypeConstructor<'a> for Getter<'a, (), I>{
+    impl<'a, I> TypeConstructor<'a> for Getter<'a, (), I> {
         type Out<T: 'a> = Getter<'a, T, I>;
     }
 
@@ -166,14 +170,16 @@ mod builder {
             }
         }
 
-        fn dimension<'b, D: Dimension>(
-            &'b mut self,
-            d: D,
-        ) -> D::Out<'b, Getter<'b, S, I>, Getter<'b, E, I>> {
-            D::choose_val::<(), _, _>(
-                Getter::new(&mut self.dl.sets, &mut self.set_map),
-                Getter::new(&mut self.dl.elements, &mut self.elem_map),
-            )
+        fn dimension<'b, D: Dimension>(&'b mut self, d: D) -> Getter<'b, D::Out<'b, S, E>, I> {
+            let headers = D::choose_val::<(&'b mut (), Vec<()>, Header<(), I>), _, _>(
+                &mut self.dl.sets,
+                &mut self.dl.elements,
+            );
+            let map = D::choose_val::<(&'b mut (), At<HashMap<(), usize>, First>), _, _>(
+                &mut self.set_map,
+                &mut self.elem_map,
+            );
+            Getter::new(headers, map)
         }
 
         pub(super) fn add_link(&mut self, set: S, elem: E) {

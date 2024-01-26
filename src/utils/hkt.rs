@@ -1,3 +1,5 @@
+use std::{collections::HashMap, marker::PhantomData};
+
 pub(crate) trait TypeConstructor<'a> {
     type Out<T: 'a>: 'a;
 }
@@ -12,6 +14,12 @@ impl<'a> TypeConstructor<'a> for () {
 
 impl<'a, F: TypeConstructor<'a>, G: TypeConstructor<'a>> TypeConstructor<'a> for (F, G) {
     type Out<T: 'a> = F::Out<G::Out<T>>;
+}
+
+impl<'a, F: TypeConstructor<'a>, G: TypeConstructor<'a>, H: TypeConstructor<'a>> TypeConstructor<'a>
+    for (F, G, H)
+{
+    type Out<T: 'a> = F::Out<G::Out<H::Out<T>>>;
 }
 
 impl<'a> TypeConstructor<'a> for Vec<()> {
@@ -48,6 +56,16 @@ pub(crate) trait Dimension: Copy {
     fn of_same<'a, X: 'a>(&self, a: X, b: X) -> X {
         Self::choose_val::<(X,), (), ()>(a, b)
     }
+}
+
+pub(crate) struct At<A, X>(PhantomData<(A, X)>);
+
+impl<'a, V: 'a> TypeConstructor<'a> for At<HashMap<(), V>, First> {
+    type Out<K: 'a> = HashMap<K, V>;
+}
+
+impl<'a, K: 'a> TypeConstructor<'a> for At<HashMap<K, ()>, Second> {
+    type Out<V: 'a> = HashMap<K, V>;
 }
 
 #[derive(Clone, Copy)]
