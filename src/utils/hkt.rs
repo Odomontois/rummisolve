@@ -1,28 +1,32 @@
-use std::marker::PhantomData;
-
 pub(crate) trait TypeConstructor<'a> {
     type Out<T: 'a>: 'a;
 }
 
-pub(crate) struct Const<X>(PhantomData<X>);
-
-impl<'a, X: 'a> TypeConstructor<'a> for Const<X> {
+impl<'a, X: 'a> TypeConstructor<'a> for (X,) {
     type Out<T: 'a> = X;
 }
 
-pub(crate) struct Id;
-
-impl<'a> TypeConstructor<'a> for Id {
+impl<'a> TypeConstructor<'a> for () {
     type Out<T: 'a> = T;
 }
 
-pub(crate) struct Compose<F, G>(PhantomData<(F, G)>);
-
-impl<'a, F: TypeConstructor<'a>, G: TypeConstructor<'a>> TypeConstructor<'a> for Compose<F, G> {
+impl<'a, F: TypeConstructor<'a>, G: TypeConstructor<'a>> TypeConstructor<'a> for (F, G) {
     type Out<T: 'a> = F::Out<G::Out<T>>;
 }
 
-pub(crate) trait Dimension {
+impl<'a> TypeConstructor<'a> for Vec<()> {
+    type Out<T: 'a> = Vec<T>;
+}
+
+impl<'a> TypeConstructor<'a> for &'a () {
+    type Out<T: 'a> = &'a T;
+}
+
+impl<'a> TypeConstructor<'a> for &'a mut () {
+    type Out<T: 'a> = &'a mut T;
+}
+
+pub(crate) trait Dimension: Copy {
     type Out<'a, S: 'a, E: 'a>: 'a;
 
     fn choose<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
@@ -30,11 +34,23 @@ pub(crate) trait Dimension {
         lr: impl FnOnce() -> F::Out<R>,
     ) -> F::Out<Self::Out<'a, L, R>>;
 
-    fn of<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(&self, a: L, b: R) -> Self::Out<'a, L, R> {
-        Self::choose::<Id, _, _>(|| a, || b)
+    fn choose_val<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
+        ll: F::Out<L>,
+        lr: F::Out<R>,
+    ) -> F::Out<Self::Out<'a, L, R>> {
+        Self::choose::<F, L, R>(|| ll, || lr)
+    }
+
+    fn of<'a, L: 'a, R: 'a>(&self, a: L, b: R) -> Self::Out<'a, L, R> {
+        Self::choose_val::<(), _, _>(a, b)
+    }
+
+    fn of_same<'a, X: 'a>(&self, a: X, b: X) -> X {
+        Self::choose_val::<(X,), (), ()>(a, b)
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct First;
 impl Dimension for First {
     type Out<'a, S: 'a, E: 'a> = S;
@@ -47,6 +63,7 @@ impl Dimension for First {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct Second;
 impl Dimension for Second {
     type Out<'a, S: 'a, E: 'a> = E;

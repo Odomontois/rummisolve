@@ -1,4 +1,5 @@
 use std::{collections::HashMap, hash::Hash};
+use crate::utils::hkt::{First as Sets, Second as Elements, Dimension};
 
 use derivative::Derivative;
 
@@ -105,51 +106,12 @@ macro_rules! impl_addressable {
 
 impl_addressable!(u8, u16, u32, u64, usize);
 
-trait Dimension: Copy {
-    type Out<S, E>;
-    fn dim<S, E>(la: impl FnOnce() -> S, lb: impl FnOnce() -> E) -> Self::Out<S, E>;
-    fn dim_same<A>(la: impl FnOnce() -> A, lb: impl FnOnce() -> A) -> A;
-    fn dimension<S, E>(a: S, b: E) -> Self::Out<S, E> {
-        Self::dim(|| a, || b)
-    }
 
-    fn of<S, E>(self, a: S, b: E) -> Self::Out<S, E> {
-        Self::dimension(a, b)
-    }
-
-    fn of_same<A>(self, a: A, b: A) -> A {
-        Self::dim_same(|| a, || b)
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Elements;
-
-impl Dimension for Elements {
-    type Out<S, E> = E;
-    fn dim<S, E>(la: impl FnOnce() -> S, lb: impl FnOnce() -> E) -> Self::Out<S, E> {
-        lb()
-    }
-    fn dim_same<A>(la: impl FnOnce() -> A, lb: impl FnOnce() -> A) -> A {
-        lb()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Sets;
-
-impl Dimension for Sets {
-    type Out<S, E> = S;
-    fn dim<S, E>(la: impl FnOnce() -> S, lb: impl FnOnce() -> E) -> Self::Out<S, E> {
-        la()
-    }
-    fn dim_same<A>(la: impl FnOnce() -> A, lb: impl FnOnce() -> A) -> A {
-        la()
-    }
-}
 
 mod builder {
     use std::{collections::HashMap, hash::Hash};
+
+    use crate::utils::hkt::TypeConstructor;
 
     use super::*;
 
@@ -163,6 +125,10 @@ mod builder {
     struct Getter<'a, X, I> {
         headers: &'a mut Vec<Header<X, I>>,
         map: &'a mut HashMap<X, usize>,
+    }
+
+    impl <'a, I> TypeConstructor<'a> for Getter<'a, (), I>{
+        type Out<T: 'a> = Getter<'a, T, I>;
     }
 
     impl<'a, X, I: Addressable> Getter<'a, X, I> {
@@ -203,8 +169,8 @@ mod builder {
         fn dimension<'b, D: Dimension>(
             &'b mut self,
             d: D,
-        ) -> D::Out<Getter<'b, S, I>, Getter<'b, E, I>> {
-            D::dimension(
+        ) -> D::Out<'b, Getter<'b, S, I>, Getter<'b, E, I>> {
+            D::choose_val::<(), _, _>(
                 Getter::new(&mut self.dl.sets, &mut self.set_map),
                 Getter::new(&mut self.dl.elements, &mut self.elem_map),
             )
