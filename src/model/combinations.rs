@@ -70,7 +70,7 @@ fn repeated_combos() -> impl Iterator<Item = TileSet> {
 
 fn repeated(value: Value, exclude: Option<Color>) -> TileSet {
     Color::all()
-        .filter(|&color| (Some(color) != exclude))
+        .filter(|&color| Some(color) != exclude )
         .map(|color| Tile::Normal { color, value })
         .collect()
 }

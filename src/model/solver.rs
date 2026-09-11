@@ -1,9 +1,10 @@
 use crate::utils::hkt::{
     Dimension, First as Sets, First, Second as Elements, Second, TypeConstructor,
 };
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, slice::SliceIndex};
 
 use derivative::Derivative;
+use std::ops::Index;
 
 #[derive(Default, Debug, Clone, Copy)]
 struct Header<E, I> {
@@ -12,8 +13,15 @@ struct Header<E, I> {
     amount: usize,
 }
 
-impl<'a, I: 'a> TypeConstructor<'a> for Header<(), I> {
-    type Out<T: 'a> = Header<T, I>;
+impl<'a, X: TypeConstructor<'a>, I: 'a> TypeConstructor<'a> for Header<X, I> {
+    type Out<T: 'a> = Header<X::Out<T>, I>;
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Backstack<I>{
+    Cell(I),
+    Set(I),
+    Element(I),
 }
 
 #[derive(Debug, Clone, Derivative)]
@@ -22,7 +30,7 @@ struct DancingLinks<I: Addressable, S, E> {
     sets: Vec<Header<S, I>>,
     elements: Vec<Header<E, I>>,
     cells: Vec<Cell<I>>,
-    backstack: Vec<I>,
+    backstack: Vec<Backstack<I>>,
 }
 
 impl<I: Addressable, S, E> DancingLinks<I, S, E> {
@@ -48,12 +56,36 @@ impl<I: Addressable, S, E> DancingLinks<I, S, E> {
         i.address().map(move |i| &mut self.cells[i])
     }
 
-    fn remove(&mut self, i: I, d: impl Dimension) {
+    fn header<'a, D: Dimension>(
+        &'a mut self,
+        i: I,
+        d: D,
+    ) -> Option<&'a mut Header<D::Out<'a, S, E>, I>>
+    where
+        Self: 'a,
+    {
+        D::choose::<Option<&'a mut Header<(), I>>, _, _>(
+            || i.get_mut_from(&mut self.sets),
+            || i.get_mut_from(&mut self.elements),
+        )
+    }
+    
+
+    fn remove_dim(&mut self, i: I, d: impl Dimension) {
         let Some(&cur) = self.cell(i) else { return };
         if let Some(prev) = self.cell_mut(cur.prev(d)) {
             *prev.next_mut(d) = cur.next(d);
-        } else {
+        } else if let Some(hd) = self.header(cur.header(d), d) {
+            debug_assert!(hd.first == i);
+            hd.first = cur.next(d);
+            hd.amount -= 1;
         }
+    }
+
+    fn remove_cell(&mut self, i: I) {
+        self.remove_dim(i, Sets);
+        self.remove_dim(i, Elements);
+        self.backstack.push(Backstack::Cell(i));
     }
 }
 
@@ -68,6 +100,10 @@ struct Cell<I: Addressable> {
 }
 
 impl<I: Addressable> Cell<I> {
+    fn header(&self, d: impl Dimension) -> I {
+        d.of_same(self.set, self.element)
+    }
+
     fn prev(&self, d: impl Dimension) -> I {
         d.of_same(self.prev_set, self.prev_element)
     }
@@ -93,6 +129,14 @@ trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> + 'static {
         } else {
             self.try_into().ok()
         }
+    }
+
+    fn get_from<A>(self, c: &[A]) -> Option<&A> {
+        c.get(self.address()?)
+    }
+
+    fn get_mut_from<A>(self, c: &mut [A]) -> Option<&mut A> {
+        c.get_mut(self.address()?)
     }
 
     fn from_address(address: usize) -> Self {

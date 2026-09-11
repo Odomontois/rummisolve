@@ -4,6 +4,10 @@ pub(crate) trait TypeConstructor<'a> {
     type Out<T: 'a>: 'a;
 }
 
+impl<'a, X: TypeConstructor<'a>> TypeConstructor<'a> for Option<X> {
+    type Out<T: 'a> = Option<X::Out<T>>;
+}
+
 impl<'a, X: 'a> TypeConstructor<'a> for (X,) {
     type Out<T: 'a> = X;
 }
@@ -12,26 +16,26 @@ impl<'a> TypeConstructor<'a> for () {
     type Out<T: 'a> = T;
 }
 
-impl<'a, F: TypeConstructor<'a>, G: TypeConstructor<'a>> TypeConstructor<'a> for (F, G) {
-    type Out<T: 'a> = F::Out<G::Out<T>>;
+impl<'a, X: TypeConstructor<'a>, Y: TypeConstructor<'a>> TypeConstructor<'a> for (X, Y) {
+    type Out<T: 'a> = X::Out<Y::Out<T>>;
 }
 
-impl<'a, F: TypeConstructor<'a>, G: TypeConstructor<'a>, H: TypeConstructor<'a>> TypeConstructor<'a>
-    for (F, G, H)
+impl<'a, X: TypeConstructor<'a>, Y: TypeConstructor<'a>, Z: TypeConstructor<'a>> TypeConstructor<'a>
+    for (X, Y, Z)
 {
-    type Out<T: 'a> = F::Out<G::Out<H::Out<T>>>;
+    type Out<T: 'a> = X::Out<Y::Out<Z::Out<T>>>;
 }
 
-impl<'a> TypeConstructor<'a> for Vec<()> {
-    type Out<T: 'a> = Vec<T>;
+impl<'a, X: TypeConstructor<'a>> TypeConstructor<'a> for Vec<X> {
+    type Out<T: 'a> = Vec<X::Out<T>>;
 }
 
-impl<'a> TypeConstructor<'a> for &'a () {
-    type Out<T: 'a> = &'a T;
+impl<'a, X: TypeConstructor<'a>> TypeConstructor<'a> for &'a X {
+    type Out<T: 'a> = &'a X::Out<T>;
 }
 
-impl<'a> TypeConstructor<'a> for &'a mut () {
-    type Out<T: 'a> = &'a mut T;
+impl<'a, X: TypeConstructor<'a>> TypeConstructor<'a> for &'a mut X {
+    type Out<T: 'a> = &'a mut X::Out<T>;
 }
 
 pub(crate) trait Dimension: Copy {
@@ -68,12 +72,12 @@ pub(crate) trait Dimension: Copy {
 
 pub(crate) struct At<A, X>(PhantomData<(A, X)>);
 
-impl<'a, V: 'a> TypeConstructor<'a> for At<HashMap<(), V>, First> {
-    type Out<K: 'a> = HashMap<K, V>;
+impl<'a, X: TypeConstructor<'a>, V: 'a> TypeConstructor<'a> for At<HashMap<X, V>, First> {
+    type Out<K: 'a> = HashMap<X::Out<K>, V>;
 }
 
-impl<'a, K: 'a> TypeConstructor<'a> for At<HashMap<K, ()>, Second> {
-    type Out<V: 'a> = HashMap<K, V>;
+impl<'a, K: 'a, X: TypeConstructor<'a>> TypeConstructor<'a> for At<HashMap<K, X>, Second> {
+    type Out<V: 'a> = HashMap<K, X::Out<V>>;
 }
 
 #[derive(Clone, Copy)]
