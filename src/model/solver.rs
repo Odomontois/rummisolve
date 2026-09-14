@@ -1,6 +1,3 @@
-use crate::utils::hkt::{
-    Dimension, First as Sets, First, Second as Elements, Second, TypeConstructor,
-};
 use std::{
     collections::{BTreeSet, HashMap},
     hash::Hash,
@@ -12,12 +9,19 @@ use derivative::Derivative;
 use std::ops::Index;
 
 #[derive(Debug, Clone, Copy)]
-struct Header<I> {
+struct ElementHeader<I> {
     first: I,
     amount: I,
 }
 
-impl<I: Addressable> Default for Header<I> {
+#[derive(Derivative, Debug, Clone)]
+#[derivative(Default(bound = ""))]
+struct SetHeader<I> {
+    elements: Vec<I>,
+    deleted: bool,
+}
+
+impl<I: Addressable> Default for ElementHeader<I> {
     fn default() -> Self {
         Self {
             first: I::NULL,
@@ -33,36 +37,21 @@ enum Backstack<I> {
     Chosen { cell: I },
 }
 
-#[derive(Debug, Clone, Derivative)]
-#[derivative(Default(bound = ""))]
-struct Headers<I: Addressable> {
-    sets: Vec<Header<I>>,
-    elements: Vec<Header<I>>,
-}
-
-impl<I: Addressable> Headers<I> {
-    fn dim_mut(&mut self, d: impl Dimension) -> &mut Vec<Header<I>> {
-        d.of_same(&mut self.sets, &mut self.elements)
-    }
-    fn get_mut(&mut self, i: I, d: impl Dimension) -> Option<&mut Header<I>> {
-        i.get_mut_from(self.dim_mut(d))
-    }
-}
+const DONE: Option<()> = Some(());
+const FAIL: Option<()> = None;
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default(bound = ""))]
 struct DancingLinks<I: Addressable> {
-    headers: Headers<I>,
+    sets: Vec<SetHeader<I>>,
+    elements: Vec<ElementHeader<I>>,
     cells: Vec<Cell<I>>,
     backstack: Vec<Backstack<I>>,
     element_choose: BTreeSet<(I, I)>,
 }
 
 impl<I: Addressable> DancingLinks<I> {
-    fn new(
-        xs: impl IntoIterator<Item = (usize, usize)>,
-        pool: impl IntoIterator<Item = (usize, usize)>,
-    ) -> Self {
+    fn new(xs: impl IntoIterator<Item = (usize, usize)>) -> Self {
         let mut dl = Self::default();
         let mut builder = builder::DancingLinksBuilder::new(&mut dl);
 
@@ -81,82 +70,44 @@ impl<I: Addressable> DancingLinks<I> {
     }
 
     fn on_element_change(&mut self, i: I, f: impl FnOnce(&mut I)) {
-        let hd = i.get_mut_from(&mut self.headers.sets).unwrap();
+        let hd = i.get_mut_from(&mut self.elements).unwrap();
         self.element_choose.remove(&(hd.amount, i));
         f(&mut hd.amount);
         self.element_choose.insert((hd.amount, i));
     }
 
-    fn on_set_change(&mut self, i: I, f: impl FnOnce(&mut I)) {
-        f(&mut i.get_mut_from(&mut self.headers.sets).unwrap().amount);
+    fn remove_set(&mut self, set: I) -> Option<()> {
+        DONE
     }
 
-    fn on_dim_change(&mut self, d: impl Dimension, i: I, f: impl FnOnce(&mut I) + Copy) {
-        d.choose_mut::<(), Self, (), ()>(
-            self,
-            |s: &mut Self| s.on_set_change(i, f),
-            |s: &mut Self| s.on_element_change(i, f),
-        );
-    }
-
-    fn remove_cell_dim(&mut self, i: I, d: impl Dimension) {
-        let Some(&cur) = self.cell(i) else { return };
-        let hi = cur.header_idx(d);
-        let hd = self.headers.get_mut(hi, d).unwrap();
+    fn remove_cell(&mut self, i: I) -> Option<()> {
+        let &cur = self.cell(i).unwrap();
+        let hi = cur.element.address().unwrap();
+        let hd = &mut self.elements[hi];
         debug_assert!(hd.first == i);
-        if let Some(prev) = cur.prev(d).get_mut_from(&mut self.cells) {
-            *prev.next_mut(d) = cur.next(d);
+        if let Some(prev) = cur.prev_set.get_mut_from(&mut self.cells) {
+            prev.next_set = cur.next_set;
         } else {
-            hd.first = cur.next(d);
+            hd.first = cur.next_set;
         }
-        self.on_dim_change(d, hi, I::decrease);
-    }
-
-    fn remove_cell(&mut self, i: I) {
-        self.remove_cell_dim(i, Sets);
+        if let Some(next) = cur.next_set.get_mut_from(&mut self.cells) {
+            next.prev_set = cur.prev_set
+        }
+        if hd.first == I::NULL {
+            return FAIL;
+        }
+        self.on_element_change(i, I::decrease);
         self.backstack.push(Backstack::Cell(i));
-    }
-
-    fn remove_set(&mut self, i: I) {
-        let mut cell = i.get_from(&self.headers.sets).unwrap().first;
-        while let Some(c) = cell.get_from(&self.cells) {
-            let prev = cell;
-            cell = c.next_element;
-            self.remove_cell(prev);
-        }
+        DONE
     }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
 struct Cell<I: Addressable> {
-    prev_element: I,
-    next_element: I,
     prev_set: I,
     next_set: I,
     set: I,
     element: I,
-}
-
-impl<I: Addressable> Cell<I> {
-    fn header_idx(&self, d: impl Dimension) -> I {
-        d.of_same(self.set, self.element)
-    }
-
-    fn prev(&self, d: impl Dimension) -> I {
-        d.of_same(self.prev_set, self.prev_element)
-    }
-
-    fn prev_mut(&mut self, d: impl Dimension) -> &mut I {
-        d.of_same(&mut self.prev_set, &mut self.prev_element)
-    }
-
-    fn next(&self, d: impl Dimension) -> I {
-        d.of_same(self.next_set, self.next_element)
-    }
-
-    fn next_mut(&mut self, d: impl Dimension) -> &mut I {
-        d.of_same(&mut self.next_set, &mut self.next_element)
-    }
 }
 
 trait Addressable:
@@ -211,8 +162,6 @@ impl_addressable!(u8, u16, u32, u64, usize);
 mod builder {
     use std::{cell, collections::HashMap, hash::Hash};
 
-    use crate::utils::hkt::{At, TypeConstructor};
-
     use super::*;
 
     #[derive(Debug)]
@@ -225,28 +174,29 @@ mod builder {
             Self { dl }
         }
 
-        fn insert(&mut self, d: impl Dimension, hidx: I, cell_idx: I) -> I {
-            let headers = self.dl.headers.dim_mut(d);
+        fn grow<X: Default>(data: &mut Vec<X>, ix: I) -> &mut X {
+            let ix = ix.address().unwrap();
+            data.resize_with(data.len().max(ix), <_>::default);
+            &mut data[ix]
+        }
 
-            let hidx = hidx.address().unwrap();
-            headers.resize_with(headers.len().max(hidx), <_>::default);
-
-            let old = headers[hidx].first;
-
-            headers[hidx].first = cell_idx;
-
+        fn insert_element(&mut self, hidx: I, cell_idx: I) -> I {
+            let elem = Self::grow(&mut self.dl.elements, hidx);
+            let old = elem.first;
+            elem.first = cell_idx;
             old
+        }
+
+        fn insert_set(&mut self, hidx: I, cell_idx: I) {
+            Self::grow(&mut self.dl.sets, hidx).elements.push(cell_idx);
         }
 
         pub(super) fn add_link(&mut self, set: I, element: I) {
             let i = I::from_address(self.dl.cells.len());
-            let next_set = self.insert(Sets, set, i);
-            let next_element = self.insert(Elements, element, i);
-            let (prev_element, prev_set) = (I::NULL, I::NULL);
+            let next_set = self.insert_set(set, i);
+            let next_set = self.insert_element(element, i);
 
             self.dl.cells.push(Cell {
-                prev_element: I::NULL,
-                next_element,
                 prev_set: I::NULL,
                 next_set,
                 set,
