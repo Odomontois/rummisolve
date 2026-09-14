@@ -41,16 +41,27 @@ impl<'a, X: TypeConstructor<'a>> TypeConstructor<'a> for &'a mut X {
 pub(crate) trait Dimension: Copy {
     type Out<'a, S: 'a, E: 'a>: 'a;
 
-    fn choose<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
-        ll: impl FnOnce() -> F::Out<L>,
-        lr: impl FnOnce() -> F::Out<R>,
+    fn choose_mut<'a, F: TypeConstructor<'a>, A, L: 'a, R: 'a>(
+        self,
+        a: &mut A,
+        ll: impl FnOnce(&mut A) -> F::Out<L>,
+        lr: impl FnOnce(&mut A) -> F::Out<R>,
     ) -> F::Out<Self::Out<'a, L, R>>;
 
+    fn choose<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
+        self,
+        ll: impl FnOnce() -> F::Out<L>,
+        lr: impl FnOnce() -> F::Out<R>,
+    ) -> F::Out<Self::Out<'a, L, R>> {
+        self.choose_mut::<F, (), L, R>(&mut (), |_| ll(), |_| lr())
+    }
+
     fn choose_val<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
+        self,
         ll: F::Out<L>,
         lr: F::Out<R>,
     ) -> F::Out<Self::Out<'a, L, R>> {
-        Self::choose::<F, L, R>(|| ll, || lr)
+        self.choose::<F, L, R>(|| ll, || lr)
     }
 
     fn val<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
@@ -58,15 +69,11 @@ pub(crate) trait Dimension: Copy {
         a: F::Out<L>,
         b: F::Out<R>,
     ) -> F::Out<Self::Out<'a, L, R>> {
-        Self::choose_val::<F, L, R>(a, b)
+        self.choose_val::<F, L, R>(a, b)
     }
 
-    fn of<'a, L: 'a, R: 'a>(&self, a: L, b: R) -> Self::Out<'a, L, R> {
-        Self::choose_val::<(), _, _>(a, b)
-    }
-
-    fn of_same<'a, X: 'a>(&self, a: X, b: X) -> X {
-        Self::choose_val::<(X,), (), ()>(a, b)
+    fn of_same<'a, X: 'a>(self, a: X, b: X) -> X {
+        self.choose_val::<(X,), (), ()>(a, b)
     }
 }
 
@@ -85,11 +92,13 @@ pub(crate) struct First;
 impl Dimension for First {
     type Out<'a, S: 'a, E: 'a> = S;
 
-    fn choose<'a, 'b, F: TypeConstructor<'a>, L: 'a, R: 'a>(
-        ll: impl FnOnce() -> F::Out<L>,
-        _lr: impl FnOnce() -> F::Out<R>,
+    fn choose_mut<'a, 'b, F: TypeConstructor<'a>, A, L: 'a, R: 'a>(
+        self,
+        a: &mut A,
+        ll: impl FnOnce(&mut A) -> F::Out<L>,
+        _lr: impl FnOnce(&mut A) -> F::Out<R>,
     ) -> F::Out<Self::Out<'a, L, R>> {
-        ll()
+        ll(a)
     }
 }
 
@@ -98,10 +107,18 @@ pub(crate) struct Second;
 impl Dimension for Second {
     type Out<'a, S: 'a, E: 'a> = E;
 
-    fn choose<'a, 'b, F: TypeConstructor<'a>, L: 'a, R: 'a>(
-        _ll: impl FnOnce() -> F::Out<L>,
-        lr: impl FnOnce() -> F::Out<R>,
+    fn choose_mut<'a, 'b, F: TypeConstructor<'a>, A, L: 'a, R: 'a>(
+        self,
+        a: &mut A,
+        _ll: impl FnOnce(&mut A) -> F::Out<L>,
+        lr: impl FnOnce(&mut A) -> F::Out<R>,
     ) -> F::Out<Self::Out<'a, L, R>> {
-        lr()
+        lr(a)
     }
+}
+
+
+#[test]
+fn check_size() {
+    assert_eq!(size_of_val(&()), 0)
 }

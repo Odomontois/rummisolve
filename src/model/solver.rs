@@ -1,7 +1,12 @@
 use crate::utils::hkt::{
     Dimension, First as Sets, First, Second as Elements, Second, TypeConstructor,
 };
-use std::{collections::HashMap, hash::Hash, slice::SliceIndex};
+use std::{
+    collections::{BTreeSet, HashMap},
+    hash::Hash,
+    ops::{Add, AddAssign, SubAssign},
+    slice::SliceIndex,
+};
 
 use derivative::Derivative;
 use std::ops::Index;
@@ -10,7 +15,7 @@ use std::ops::Index;
 struct Header<E, I> {
     value: E,
     first: I,
-    amount: usize,
+    amount: I,
 }
 
 impl<'a, X: TypeConstructor<'a>, I: 'a> TypeConstructor<'a> for Header<X, I> {
@@ -18,19 +23,36 @@ impl<'a, X: TypeConstructor<'a>, I: 'a> TypeConstructor<'a> for Header<X, I> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Backstack<I>{
+enum Backstack<I> {
     Cell(I),
     Set(I),
     Element(I),
+    Chosen { cell: I },
+}
+
+#[derive(Debug, Clone, Derivative)]
+#[derivative(Default(bound = ""))]
+struct Headers<I: Addressable, S, E> {
+    sets: Vec<Header<S, I>>,
+    elements: Vec<Header<E, I>>,
+}
+
+impl<I: Addressable, S, E> Headers<I, S, E> {
+    fn dim_mut<D: Dimension>(&mut self, d: D) -> &mut Vec<Header<D::Out<'_, S, E>, I>> {
+        d.choose_val::<&mut Vec<Header<(), I>>, S, E>(&mut self.sets, &mut self.elements)
+    }
+    fn get_mut<D: Dimension>(&mut self, i: I, d: D) -> Option<&mut Header<D::Out<'_, S, E>, I>> {
+        i.get_mut_from(self.dim_mut(d))
+    }
 }
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default(bound = ""))]
 struct DancingLinks<I: Addressable, S, E> {
-    sets: Vec<Header<S, I>>,
-    elements: Vec<Header<E, I>>,
+    headers: Headers<I, S, E>,
     cells: Vec<Cell<I>>,
     backstack: Vec<Backstack<I>>,
+    element_choose: BTreeSet<(I, I)>,
 }
 
 impl<I: Addressable, S, E> DancingLinks<I, S, E> {
@@ -56,36 +78,50 @@ impl<I: Addressable, S, E> DancingLinks<I, S, E> {
         i.address().map(move |i| &mut self.cells[i])
     }
 
-    fn header<'a, D: Dimension>(
-        &'a mut self,
-        i: I,
-        d: D,
-    ) -> Option<&'a mut Header<D::Out<'a, S, E>, I>>
-    where
-        Self: 'a,
-    {
-        D::choose::<Option<&'a mut Header<(), I>>, _, _>(
-            || i.get_mut_from(&mut self.sets),
-            || i.get_mut_from(&mut self.elements),
-        )
+    fn on_element_change(&mut self, i: I, f: impl FnOnce(&mut I)) {
+        let hd = i.get_mut_from(&mut self.headers.sets).unwrap();
+        self.element_choose.remove(&(hd.amount, i));
+        f(&mut hd.amount);
+        self.element_choose.insert((hd.amount, i));
     }
-    
 
-    fn remove_dim(&mut self, i: I, d: impl Dimension) {
+    fn on_set_change(&mut self, i: I, f: impl FnOnce(&mut I)) {
+        f(&mut i.get_mut_from(&mut self.headers.sets).unwrap().amount);
+    }
+
+    fn on_dim_change(&mut self, d: impl Dimension, i: I, f: impl FnOnce(&mut I) + Copy) {
+        d.choose_mut::<(), Self, (), ()>(
+            self,
+            |s: &mut Self| s.on_set_change(i, f),
+            |s: &mut Self| s.on_element_change(i, f),
+        );
+    }
+
+    fn remove_cell_dim(&mut self, i: I, d: impl Dimension) {
         let Some(&cur) = self.cell(i) else { return };
-        if let Some(prev) = self.cell_mut(cur.prev(d)) {
+        let hi = cur.header_idx(d);
+        let hd = self.headers.get_mut(hi, d).unwrap();
+        debug_assert!(hd.first == i);
+        if let Some(prev) = cur.prev(d).get_mut_from(&mut self.cells) {
             *prev.next_mut(d) = cur.next(d);
-        } else if let Some(hd) = self.header(cur.header(d), d) {
-            debug_assert!(hd.first == i);
+        } else {
             hd.first = cur.next(d);
-            hd.amount -= 1;
         }
+        self.on_dim_change(d, hi, I::decrease);
     }
 
     fn remove_cell(&mut self, i: I) {
-        self.remove_dim(i, Sets);
-        self.remove_dim(i, Elements);
+        self.remove_cell_dim(i, Sets);
         self.backstack.push(Backstack::Cell(i));
+    }
+
+    fn remove_set(&mut self, i: I) {
+        let mut cell = i.get_from(&self.headers.sets).unwrap().first;
+        while let Some(c) = cell.get_from(&self.cells) {
+            let prev = cell;
+            cell = c.next_element;
+            self.remove_cell(prev);
+        }
     }
 }
 
@@ -100,7 +136,7 @@ struct Cell<I: Addressable> {
 }
 
 impl<I: Addressable> Cell<I> {
-    fn header(&self, d: impl Dimension) -> I {
+    fn header_idx(&self, d: impl Dimension) -> I {
         d.of_same(self.set, self.element)
     }
 
@@ -121,8 +157,12 @@ impl<I: Addressable> Cell<I> {
     }
 }
 
-trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> + 'static {
+trait Addressable:
+    Copy + Eq + TryInto<usize> + Ord + SubAssign + AddAssign + TryFrom<usize> + 'static
+{
     const NULL: Self;
+    const ONE: Self;
+    const ZERO: Self;
     fn address(self) -> Option<usize> {
         if self == Self::NULL {
             None
@@ -142,6 +182,14 @@ trait Addressable: Copy + Eq + TryInto<usize> + TryFrom<usize> + 'static {
     fn from_address(address: usize) -> Self {
         address.try_into().ok().unwrap_or(Self::NULL)
     }
+
+    fn decrease(&mut self) {
+        *self -= Self::ONE
+    }
+
+    fn increase(&mut self) {
+        *self += Self::ONE
+    }
 }
 
 macro_rules! impl_addressable {
@@ -149,6 +197,8 @@ macro_rules! impl_addressable {
         $(
             impl Addressable for $t {
                 const NULL: $t = !0;
+                const ONE: $t = 1;
+                const ZERO: $t = 0;
             }
         )*
     };
@@ -186,7 +236,7 @@ mod builder {
             D::Out<'b, S, E>: Clone + Hash + Eq,
         {
             type HeaderHK<'b, I> = (&'b mut (), Vec<()>, Header<(), I>);
-            let headers = d.val::<HeaderHK<'b, I>, _, _>(&mut self.dl.sets, &mut self.dl.elements);
+            let headers = self.dl.headers.dim_mut(d);
 
             type MapHK<'b> = (&'b mut (), At<HashMap<(), usize>, First>);
             let map = d.val::<MapHK, _, _>(&mut self.set_map, &mut self.elem_map);
@@ -196,7 +246,7 @@ mod builder {
                 headers.push(Header {
                     value: x,
                     first: I::NULL,
-                    amount: 0,
+                    amount: I::ZERO,
                 });
                 i
             });
