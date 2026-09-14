@@ -11,17 +11,20 @@ use std::{
 use derivative::Derivative;
 use std::ops::Index;
 
-#[derive(Default, Debug, Clone, Copy)]
-struct Header<E, I> {
-    value: E,
+#[derive(Debug, Clone, Copy)]
+struct Header<I> {
     first: I,
     amount: I,
 }
 
-impl<'a, X: TypeConstructor<'a>, I: 'a> TypeConstructor<'a> for Header<X, I> {
-    type Out<T: 'a> = Header<X::Out<T>, I>;
+impl<I: Addressable> Default for Header<I> {
+    fn default() -> Self {
+        Self {
+            first: I::NULL,
+            amount: I::ZERO,
+        }
+    }
 }
-
 #[derive(Debug, Clone, Copy)]
 enum Backstack<I> {
     Cell(I),
@@ -32,40 +35,39 @@ enum Backstack<I> {
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default(bound = ""))]
-struct Headers<I: Addressable, S, E> {
-    sets: Vec<Header<S, I>>,
-    elements: Vec<Header<E, I>>,
+struct Headers<I: Addressable> {
+    sets: Vec<Header<I>>,
+    elements: Vec<Header<I>>,
 }
 
-impl<I: Addressable, S, E> Headers<I, S, E> {
-    fn dim_mut<D: Dimension>(&mut self, d: D) -> &mut Vec<Header<D::Out<'_, S, E>, I>> {
-        d.choose_val::<&mut Vec<Header<(), I>>, S, E>(&mut self.sets, &mut self.elements)
+impl<I: Addressable> Headers<I> {
+    fn dim_mut(&mut self, d: impl Dimension) -> &mut Vec<Header<I>> {
+        d.of_same(&mut self.sets, &mut self.elements)
     }
-    fn get_mut<D: Dimension>(&mut self, i: I, d: D) -> Option<&mut Header<D::Out<'_, S, E>, I>> {
+    fn get_mut(&mut self, i: I, d: impl Dimension) -> Option<&mut Header<I>> {
         i.get_mut_from(self.dim_mut(d))
     }
 }
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default(bound = ""))]
-struct DancingLinks<I: Addressable, S, E> {
-    headers: Headers<I, S, E>,
+struct DancingLinks<I: Addressable> {
+    headers: Headers<I>,
     cells: Vec<Cell<I>>,
     backstack: Vec<Backstack<I>>,
     element_choose: BTreeSet<(I, I)>,
 }
 
-impl<I: Addressable, S, E> DancingLinks<I, S, E> {
-    fn new(xs: impl IntoIterator<Item = (S, E)>, pool: impl IntoIterator<Item = (E, usize)>) -> Self
-    where
-        S: Clone + Hash + Eq,
-        E: Clone + Hash + Eq,
-    {
+impl<I: Addressable> DancingLinks<I> {
+    fn new(
+        xs: impl IntoIterator<Item = (usize, usize)>,
+        pool: impl IntoIterator<Item = (usize, usize)>,
+    ) -> Self {
         let mut dl = Self::default();
         let mut builder = builder::DancingLinksBuilder::new(&mut dl);
 
         for (set, elem) in xs {
-            builder.add_link(set, elem);
+            builder.add_link(I::from_address(set), I::from_address(elem));
         }
 
         dl
@@ -207,67 +209,45 @@ macro_rules! impl_addressable {
 impl_addressable!(u8, u16, u32, u64, usize);
 
 mod builder {
-    use std::{collections::HashMap, hash::Hash};
+    use std::{cell, collections::HashMap, hash::Hash};
 
     use crate::utils::hkt::{At, TypeConstructor};
 
     use super::*;
 
     #[derive(Debug)]
-    pub(super) struct DancingLinksBuilder<'a, I: Addressable, S, E> {
-        dl: &'a mut DancingLinks<I, S, E>,
-        elem_map: HashMap<E, usize>,
-        set_map: HashMap<S, usize>,
+    pub(super) struct DancingLinksBuilder<'a, I: Addressable> {
+        dl: &'a mut DancingLinks<I>,
     }
 
-    impl<'a, I: Addressable, S: Eq + Hash + Clone, E: Eq + Hash + Clone>
-        DancingLinksBuilder<'a, I, S, E>
-    {
-        pub(super) fn new(dl: &'a mut DancingLinks<I, S, E>) -> Self {
-            Self {
-                dl,
-                elem_map: HashMap::new(),
-                set_map: HashMap::new(),
-            }
+    impl<'a, I: Addressable> DancingLinksBuilder<'a, I> {
+        pub(super) fn new(dl: &'a mut DancingLinks<I>) -> Self {
+            Self { dl }
         }
 
-        fn insert<'b, D: Dimension>(&'b mut self, d: D, x: D::Out<'b, S, E>, new: I) -> (I, I)
-        where
-            D::Out<'b, S, E>: Clone + Hash + Eq,
-        {
-            type HeaderHK<'b, I> = (&'b mut (), Vec<()>, Header<(), I>);
+        fn insert(&mut self, d: impl Dimension, hidx: I, cell_idx: I) -> I {
             let headers = self.dl.headers.dim_mut(d);
 
-            type MapHK<'b> = (&'b mut (), At<HashMap<(), usize>, First>);
-            let map = d.val::<MapHK, _, _>(&mut self.set_map, &mut self.elem_map);
+            let hidx = hidx.address().unwrap();
+            headers.resize_with(headers.len().max(hidx), <_>::default);
 
-            let j = *map.entry(x.clone()).or_insert_with(|| {
-                let i = headers.len();
-                headers.push(Header {
-                    value: x,
-                    first: I::NULL,
-                    amount: I::ZERO,
-                });
-                i
-            });
+            let old = headers[hidx].first;
 
-            headers[j].first = new;
+            headers[hidx].first = cell_idx;
 
-            let old = headers[j].first;
-
-            (I::from_address(j), old)
+            old
         }
 
-        pub(super) fn add_link(&mut self, set: S, elem: E) {
+        pub(super) fn add_link(&mut self, set: I, element: I) {
             let i = I::from_address(self.dl.cells.len());
-            let (set, next_set) = self.insert(Sets, set, i);
-            let (element, next_element) = self.insert(Elements, elem, i);
+            let next_set = self.insert(Sets, set, i);
+            let next_element = self.insert(Elements, element, i);
             let (prev_element, prev_set) = (I::NULL, I::NULL);
 
             self.dl.cells.push(Cell {
-                prev_element,
+                prev_element: I::NULL,
                 next_element,
-                prev_set,
+                prev_set: I::NULL,
                 next_set,
                 set,
                 element,

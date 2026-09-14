@@ -64,14 +64,6 @@ pub(crate) trait Dimension: Copy {
         self.choose::<F, L, R>(|| ll, || lr)
     }
 
-    fn val<'a, F: TypeConstructor<'a>, L: 'a, R: 'a>(
-        self,
-        a: F::Out<L>,
-        b: F::Out<R>,
-    ) -> F::Out<Self::Out<'a, L, R>> {
-        self.choose_val::<F, L, R>(a, b)
-    }
-
     fn of_same<'a, X: 'a>(self, a: X, b: X) -> X {
         self.choose_val::<(X,), (), ()>(a, b)
     }
@@ -116,7 +108,6 @@ impl Dimension for Second {
         lr(a)
     }
 }
-
 
 #[test]
 fn check_size() {
