@@ -1,2 +1,3 @@
 [build]
-# public_url = "/rummisolve/"
+# The GitHub Pages workflow passes --public-url /rummisolve/ itself,
+# so `trunk serve` keeps working on http://localhost:8080/
