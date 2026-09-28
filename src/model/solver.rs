@@ -1,9 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
-    hash::Hash,
-    mem::take,
-    ops::{Add, AddAssign, IndexMut, SubAssign},
-    slice::SliceIndex,
+    any::TypeId, collections::{BTreeSet, HashMap}, hash::Hash, mem::take, ops::{Add, AddAssign, IndexMut, SubAssign}, slice::SliceIndex,
 };
 
 use derivative::Derivative;
@@ -24,7 +20,7 @@ struct SetHeader<Idx> {
     deleted: bool,
 }
 
-impl<C: Addressable, I> Default for ElementHeader<C, I> {
+impl<C: Count, I> Default for ElementHeader<C, I> {
     fn default() -> Self {
         Self {
             first: None,
@@ -35,7 +31,6 @@ impl<C: Addressable, I> Default for ElementHeader<C, I> {
 #[derive(Debug, Clone, Copy)]
 enum Backstack<I> {
     Cell(I),
-    Set(I),
     Element(I),
     Chosen { cell: I },
 }
@@ -53,9 +48,9 @@ struct DancingLinks<C, I> {
     element_choose: BTreeSet<(C, I)>,
 }
 
-type DancingLinksOf<C> = DancingLinks<C, <C as Addressable>::Idx>;
+type DancingLinksOf<C> = DancingLinks<C, <C as Count>::Idx>;
 
-impl<C: Addressable<Idx = I>, I: AddressableIdx> DancingLinks<C, I> {
+impl<C: Count<Idx = I>, I: Address> DancingLinks<C, I> {
     fn new(xs: impl IntoIterator<Item = (usize, usize)>) -> Self {
         let mut dl = Self::default();
         let mut builder = builder::DancingLinksBuilder::new(&mut dl);
@@ -86,38 +81,57 @@ impl<C: Addressable<Idx = I>, I: AddressableIdx> DancingLinks<C, I> {
         DONE
     }
 
+    fn remove_element(&mut self, elem_ix: I) -> Option<()> {
+        let elem = &mut self.elements[Ix(elem_ix)];
+        elem.amount.decrease();
+        self.backstack.push(Backstack::Element(elem_ix));
+        if elem.amount == C::ZERO {
+            let mut cur = elem.first;
+            while let Some(i) = cur {
+                let cell = self.cells[Ix(i)];
+                self.remove_set(cell.set)?;
+                cur = cell.set_list.next;
+            }
+        }
+        DONE
+    }
+
     fn remove_cell(&mut self, i: I) -> Option<()> {
-        let &cur = &self.cells[Ix(i)];
-        let hi = cur.element.address();
-        let hd = &mut self.elements[hi];
-        debug_assert!(hd.first == Some(i));
-        if let Some(prev_set) = cur.prev_set {
-            self.cells[Ix(prev_set)].next_set = cur.next_set;
-        } else {
-            hd.first = cur.next_set;
-        }
-        if let Some(next_set) = cur.next_set {
-            self.cells[Ix(next_set)].prev_set = cur.prev_set
-        }
-        if hd.first == None {
-            return FAIL;
-        }
-        self.on_element_change(i, C::decrease);
-        self.backstack.push(Backstack::Cell(i));
+        // let &cur = &self.cells[Ix(i)];
+        // let hi = cur.element.address();
+        // let hd = &mut self.elements[hi];
+        // debug_assert!(hd.first == Some(i));
+        // if let Some(prev_set) = cur.prev_set {
+        //     self.cells[Ix(prev_set)].next_set = cur.next_set;
+        // } else {
+        //     hd.first = cur.next_set;
+        // }
+        // if let Some(next_set) = cur.next_set {
+        //     self.cells[Ix(next_set)].prev_set = cur.prev_set
+        // }
+        // if hd.first == None {
+        //     return FAIL;
+        // }
+        // self.on_element_change(i, C::decrease);
+        // self.backstack.push(Backstack::Cell(i));
         DONE
     }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
+struct LinkedNode<I> {
+    prev: Option<I>,
+    next: Option<I>,
+}
+#[derive(Default, Debug, Clone, Copy)]
 struct Cell<I> {
-    prev_set: Option<I>,
-    next_set: Option<I>,
+    set_list: LinkedNode<I>,
     set: I,
     element: I,
 }
 
-trait Addressable: Copy + Eq + Ord + SubAssign + AddAssign + 'static {
-    type Idx: AddressableIdx;
+trait Count: Copy + Eq + Ord + SubAssign + AddAssign + 'static {
+    type Idx: Address;
     const ONE: Self;
     const ZERO: Self;
     fn decrease(&mut self) {
@@ -129,10 +143,8 @@ trait Addressable: Copy + Eq + Ord + SubAssign + AddAssign + 'static {
     }
 }
 
-trait AddressableIdx:
-    Copy + Eq + Ord + TryFrom<NonZero<usize>> + TryInto<NonZero<usize>> + 'static
-{
-    type Count: Addressable;
+trait Address: Copy + Eq + Ord + TryFrom<NonZero<usize>> + TryInto<NonZero<usize>> + 'static {
+    type Count: Count;
     const ONE: Self;
     fn address(self) -> usize {
         self.try_into().map_or(1, <_>::into) - 1
@@ -147,7 +159,7 @@ trait AddressableIdx:
 
 struct Ix<I>(I);
 
-impl<A, I: AddressableIdx> Index<Ix<I>> for Vec<A> {
+impl<A, I: Address> Index<Ix<I>> for Vec<A> {
     type Output = A;
 
     fn index(&self, index: Ix<I>) -> &Self::Output {
@@ -155,7 +167,7 @@ impl<A, I: AddressableIdx> Index<Ix<I>> for Vec<A> {
     }
 }
 
-impl<A, I: AddressableIdx> IndexMut<Ix<I>> for Vec<A> {
+impl<A, I: Address> IndexMut<Ix<I>> for Vec<A> {
     fn index_mut(&mut self, index: Ix<I>) -> &mut Self::Output {
         &mut self[index.0.address()]
     }
@@ -163,12 +175,12 @@ impl<A, I: AddressableIdx> IndexMut<Ix<I>> for Vec<A> {
 macro_rules! impl_addressable {
     ($($t:ty),*) => {
         $(
-            impl AddressableIdx for NonZero<$t> {
+            impl Address for NonZero<$t> {
                 type Count = $t;
                 const ONE: Self = NonZero::new(1).unwrap();
             }
 
-            impl Addressable for $t{
+            impl Count for $t{
                 type Idx = NonZero<$t>;
                 const ONE: $t = 1;
                 const ZERO: $t = 0;
@@ -185,11 +197,11 @@ mod builder {
     use super::*;
 
     #[derive(Derivative, Debug)]
-    pub(super) struct DancingLinksBuilder<'a, C: Addressable<Idx = I>, I: AddressableIdx> {
+    pub(super) struct DancingLinksBuilder<'a, C: Count<Idx = I>, I: Address> {
         dl: &'a mut DancingLinks<C, C::Idx>,
     }
 
-    impl<'a, C: Addressable<Idx = I>, I: AddressableIdx> DancingLinksBuilder<'a, C, I> {
+    impl<'a, C: Count<Idx = I>, I: Address> DancingLinksBuilder<'a, C, I> {
         pub(super) fn new(dl: &'a mut DancingLinks<C, C::Idx>) -> Self {
             Self { dl }
         }
@@ -213,16 +225,41 @@ mod builder {
 
         pub(super) fn add_link(&mut self, set: I, element: I) {
             let i = I::from_address(self.dl.cells.len());
-            let next_set = self.insert_set(set, i);
-            let next_set = self.insert_element(element, i);
+            self.insert_set(set, i);
+            let next = self.insert_element(element, i);
+            let set_list = LinkedNode { prev: None, next };
 
             self.dl.cells.push(Cell {
-                prev_set: None,
-                next_set,
+                set_list,
                 set,
                 element,
             });
         }
+    }
+}
+
+struct Linked<'a, I, F> {
+    head: &'a mut Option<I>,
+    list_f: F,
+}
+
+impl<'a, I: Address, F: Fn(I) -> &'a mut LinkedNode<I>> Linked<'a, I, F> {
+    fn delete(self, i: I){
+        // let &cur = &self.pool[Ix(i)];
+        // debug_assert!(*self.head == Some(i));
+        // if let Some(prev) = cur.prev_set {
+        //     self.cells[Ix(prev)].next_set = cur.next_set;
+        // } else {
+        //     hd.first = cur.next_set;
+        // }
+        // if let Some(next_set) = cur.next_set {
+        //     self.cells[Ix(next_set)].prev_set = cur.prev_set
+        // }
+        // if hd.first == None {
+        //     return FAIL;
+        // }
+        // self.on_element_change(i, C::decrease);
+        // self.backstack.push(Backstack::Cell(i));
     }
 }
 
@@ -233,4 +270,17 @@ mod tests {
     fn check() {
         let u: DancingLinksOf<u8> = DancingLinks::new([]);
     }
+}
+
+
+fn lol<A: 'static>() -> Vec<A>{
+    println!("{:?}", TypeId::of::<A>());
+    vec![]
+}
+
+#[test]
+fn lols(){
+    lol::<Vec<Option<String>>>();
+    lol::<Vec<Option<String>>>();
+    lol::<([&'static u64; 4])>();
 }

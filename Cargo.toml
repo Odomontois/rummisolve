@@ -1,10 +1,10 @@
 [package]
 name = "rummisolve"
 version = "0.0.3"
-edition = "2021"
+edition = "2024"
 description = "Template for starting a Yew project using Trunk"
 readme = "README.md"
-repository = "https://github.com/yewstack/yew-trunk-minimal-template"
+repository = "https://github.com/Odomontois/rummisolve.git"
 license = "MIT OR Apache-2.0"
 keywords = ["yew", "trunk"]
 categories = ["gui", "wasm", "web-programming"]
