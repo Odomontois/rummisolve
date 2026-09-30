@@ -156,29 +156,18 @@ impl Debug for TileSet {
     }
 }
 
-impl IntoIterator for TileSet {
-    type Item = Tile;
 
-    type IntoIter = Tiles;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Tiles(self)
-    }
-}
-
-pub struct Tiles(TileSet);
-
-impl Iterator for Tiles {
+impl Iterator for TileSet {
     type Item = Tile;
 
     fn next(&mut self) -> Option<Tile> {
-        let tz = self.0.once.trailing_zeros() as u64;
+        let tz = self.once.trailing_zeros() as u64;
         let tile = Tile::from_code(tz)?;
         let bit = 1 << tz;
-        if (self.0.twice & bit) != 0 {
-            self.0.twice ^= bit;
+        if (self.twice & bit) != 0 {
+            self.twice ^= bit;
         } else {
-            self.0.once ^= bit;
+            self.once ^= bit;
         }
         Some(tile)
     }

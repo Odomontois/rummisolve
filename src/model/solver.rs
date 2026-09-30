@@ -1,5 +1,11 @@
 use std::{
-    any::TypeId, collections::{BTreeSet, HashMap}, hash::Hash, mem::take, ops::{Add, AddAssign, IndexMut, SubAssign}, slice::SliceIndex,
+    any::TypeId,
+    collections::{BTreeSet, HashMap},
+    hash::Hash,
+    marker::PhantomData,
+    mem::take,
+    ops::{Add, AddAssign, IndexMut, SubAssign},
+    slice::SliceIndex,
 };
 
 use derivative::Derivative;
@@ -96,24 +102,26 @@ impl<C: Count<Idx = I>, I: Address> DancingLinks<C, I> {
         DONE
     }
 
+    fn set_list<'a>(&'a mut self, element: I) -> impl LinkedList<I> + 'a {
+        struct SetList<'a, C, I>(&'a mut DancingLinks<C, I>, I);
+
+        impl<'a, C, I: Address> LinkedList<I> for SetList<'a, C, I> {
+            fn head(&mut self) -> &mut Option<I> {
+                &mut self.0.elements[Ix(self.1)].first
+            }
+
+            fn node(&mut self, ix: I) -> &mut LinkedNode<I> {
+                &mut self.0.cells[Ix(ix)].set_list
+            }
+        }
+        SetList(self, element)
+    }
+
     fn remove_cell(&mut self, i: I) -> Option<()> {
-        // let &cur = &self.cells[Ix(i)];
-        // let hi = cur.element.address();
-        // let hd = &mut self.elements[hi];
-        // debug_assert!(hd.first == Some(i));
-        // if let Some(prev_set) = cur.prev_set {
-        //     self.cells[Ix(prev_set)].next_set = cur.next_set;
-        // } else {
-        //     hd.first = cur.next_set;
-        // }
-        // if let Some(next_set) = cur.next_set {
-        //     self.cells[Ix(next_set)].prev_set = cur.prev_set
-        // }
-        // if hd.first == None {
-        //     return FAIL;
-        // }
-        // self.on_element_change(i, C::decrease);
-        // self.backstack.push(Backstack::Cell(i));
+        let cell = self.cells[Ix(i)];
+        self.set_list(cell.set).delete(i)?;
+        self.on_element_change(i, C::decrease);
+        self.backstack.push(Backstack::Cell(i));
         DONE
     }
 }
@@ -238,28 +246,22 @@ mod builder {
     }
 }
 
-struct Linked<'a, I, F> {
-    head: &'a mut Option<I>,
-    list_f: F,
-}
+trait LinkedList<I: Address> {
+    fn head(&mut self) -> &mut Option<I>;
+    fn node(&mut self, ix: I) -> &mut LinkedNode<I>;
 
-impl<'a, I: Address, F: Fn(I) -> &'a mut LinkedNode<I>> Linked<'a, I, F> {
-    fn delete(self, i: I){
-        // let &cur = &self.pool[Ix(i)];
-        // debug_assert!(*self.head == Some(i));
-        // if let Some(prev) = cur.prev_set {
-        //     self.cells[Ix(prev)].next_set = cur.next_set;
-        // } else {
-        //     hd.first = cur.next_set;
-        // }
-        // if let Some(next_set) = cur.next_set {
-        //     self.cells[Ix(next_set)].prev_set = cur.prev_set
-        // }
-        // if hd.first == None {
-        //     return FAIL;
-        // }
-        // self.on_element_change(i, C::decrease);
-        // self.backstack.push(Backstack::Cell(i));
+    fn delete(&mut self, i: I) -> Option<()> {
+        let node = *self.node(i);
+        if let Some(prev) = node.prev {
+            self.node(prev).next = node.next;
+        } else {
+            *self.head() = node.next;
+        }
+        if let Some(next) = node.next {
+            self.node(next).prev = node.prev
+        }
+        (*self.head())?;
+        DONE
     }
 }
 
@@ -272,14 +274,13 @@ mod tests {
     }
 }
 
-
-fn lol<A: 'static>() -> Vec<A>{
+fn lol<A: 'static>() -> Vec<A> {
     println!("{:?}", TypeId::of::<A>());
     vec![]
 }
 
 #[test]
-fn lols(){
+fn lols() {
     lol::<Vec<Option<String>>>();
     lol::<Vec<Option<String>>>();
     lol::<([&'static u64; 4])>();

@@ -13,6 +13,11 @@ pub fn all_combos() -> impl Iterator<Item = TileSet> {
 }
 
 fn gen_all_combos() -> impl Iterator<Item = TileSet> {
+    let bad_sheep = jokerless_combos().find(|c| c.into_iter().count() == 2);
+    if let Some(combo) = bad_sheep {
+        tracing::info!("Found bad sheep: {combo:?}");
+    }
+    tracing::info!("HELLO");
     dedup(jokerless_combos().flat_map(jokerized))
 }
 
@@ -37,26 +42,13 @@ fn jokerized(combo: TileSet) -> impl Iterator<Item = TileSet> {
 }
 
 fn single_joker(combo: TileSet) -> impl Iterator<Item = TileSet> {
-    combo
-        .into_iter()
-        .map(move |tile| combo.remove(tile).add(Tile::Joker))
+    combo.map(move |tile| combo - tile + Tile::Joker)
 }
 
 fn double_joker(combo: TileSet) -> impl Iterator<Item = TileSet> {
-    combo
-        .into_iter()
-        .flat_map(move |t1| {
-            combo
-                .into_iter()
-                .filter_map(move |t2| (t1 < t2).then(|| (t1, t2)))
-        })
-        .map(move |(t1, t2)| {
-            combo
-                .remove(t1)
-                .remove(t2)
-                .add(Tile::Joker)
-                .add(Tile::Joker)
-        })
+    combo.flat_map(move |t1| {
+        combo.filter_map(move |t2| (t1 < t2).then(|| combo - t1 - t2 + Tile::Joker + Tile::Joker))
+    })
 }
 
 fn repeated_combos() -> impl Iterator<Item = TileSet> {
@@ -70,7 +62,7 @@ fn repeated_combos() -> impl Iterator<Item = TileSet> {
 
 fn repeated(value: Value, exclude: Option<Color>) -> TileSet {
     Color::all()
-        .filter(|&color| Some(color) != exclude )
+        .filter(|&color| Some(color) != exclude)
         .map(|color| Tile::Normal { color, value })
         .collect()
 }
@@ -81,7 +73,7 @@ fn sequence_combos() -> impl Iterator<Item = TileSet> {
 
 fn color_sequences(color: Color) -> impl Iterator<Item = TileSet> {
     (1..11).flat_map(move |start| {
-        (start + 2..=13).map(move |end| {
+        (start + 2..=13.min(start + 4)).map(move |end| {
             (start..=end)
                 .filter_map(Value::from_code)
                 .map(move |value| Tile::Normal { color, value })
