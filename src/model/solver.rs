@@ -2,6 +2,7 @@
 
 mod address;
 mod linked;
+mod choose_min;
 
 use std::{any::TypeId, collections::BTreeSet};
 
