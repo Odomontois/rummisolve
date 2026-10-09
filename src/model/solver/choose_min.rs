@@ -22,13 +22,12 @@ impl<I: Address> ChooseMin<I::Count, I> {
         self.list[elem.ix()].count.address().unwrap()
     }
 
-    fn list(&mut self, elem: I) -> impl LinkedList<I> + '_ {
+    fn list(&mut self, level: I) -> impl LinkedList<I> + '_ {
         struct List<'a, I: Address>(&'a mut ChooseMin<I::Count, I>, I);
 
         impl<'a, I: Address> LinkedList<I> for List<'a, I> {
             fn head(&mut self) -> &mut Option<I> {
-                let level = self.0.cell_level(self.1);
-                &mut self.0.levels[level.ix()]
+                &mut self.0.levels[self.1.ix()]
             }
 
             fn node(&mut self, ix: I) -> &mut LinkedNode<I> {
@@ -36,7 +35,7 @@ impl<I: Address> ChooseMin<I::Count, I> {
             }
         }
 
-        List(self, elem)
+        List(self, level)
     }
 
     fn insert(&mut self, elem: I) {
@@ -74,7 +73,7 @@ impl<I: Address> FromIterator<I::Count> for ChooseMin<I::Count, I> {
                 min_level = count;
             }
         }
-        let levels = vec![None; (max_count.try_into().unwrap_or(0))];
+        let levels = vec![None; (max_count.try_into().unwrap_or(0) + 1)];
 
         let mut res = Self {
             list,
