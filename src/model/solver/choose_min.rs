@@ -133,6 +133,7 @@ mod tests {
 
     fn build(counts: &[u8]) -> CM {
         let cm: CM = counts.iter().copied().collect();
+        println!("{cm:?}");
         check_invariants(&cm);
         check_min(&cm, counts);
         cm

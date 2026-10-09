@@ -27,6 +27,9 @@ pub(crate) trait LinkedList<I: Address> {
         let node = self.node(i);
         node.prev = None;
         node.next = head;
+        if let Some(next) = head {
+            self.node(next).prev = Some(i)
+        }
         *self.head() = Some(i)
     }
 
@@ -59,4 +62,3 @@ pub(crate) struct LinkedNode<I> {
     pub(crate) prev: Option<I>,
     pub(crate) next: Option<I>,
 }
-
