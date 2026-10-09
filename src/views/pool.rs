@@ -5,7 +5,7 @@ use crate::model::{self, TileSet};
 
 #[function_component]
 pub fn Pool() -> Html {
-    let pool = use_state_eq(|| TileSet::default());
+    let pool = use_state_eq(TileSet::default);
     let on_pick = {
         let pool = pool.clone();
         Callback::from(move |tile: model::Tile| {

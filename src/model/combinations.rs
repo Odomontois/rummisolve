@@ -1,3 +1,5 @@
+#![allow(clippy::filter_map_bool_then)]
+
 use std::{collections::HashSet, hash::Hash};
 
 use super::{Color, Tile, TileSet, Value};
@@ -25,7 +27,7 @@ fn dedup<A: Eq + Hash + Copy>(xs: impl Iterator<Item = A>) -> impl Iterator<Item
     xs.scan(HashSet::new(), |s, e| {
         let new = !s.contains(&e);
         s.insert(e);
-        Some(new.then(|| e))
+        Some(new.then_some(e))
     })
     .flatten()
 }

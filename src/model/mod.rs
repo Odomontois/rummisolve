@@ -1,6 +1,5 @@
 mod combinations; // mod solve;
 mod debug;
-#[allow(unused)]
 mod solver;
 mod tile;
 mod tileset;

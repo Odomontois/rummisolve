@@ -11,7 +11,7 @@ pub struct Props {
 
 #[function_component]
 pub fn Picker(props: &Props) -> Html {
-    let chosen_color = use_state_eq(|| Color::default());
+    let chosen_color = use_state_eq(Color::default);
     let choose_color = {
         let chosen_color = chosen_color.clone();
         Callback::from(move |s: Color| chosen_color.set(s))
@@ -43,10 +43,9 @@ pub fn Picker(props: &Props) -> Html {
     let values = tiles
         .map(|tile| {
             let on_click = {
-                let tile = tile.clone();
                 let on_pick = props.on_pick.clone();
                 Callback::from(move |_| {
-                    on_pick.emit(tile.clone());
+                    on_pick.emit(tile);
                 })
             };
             html! {

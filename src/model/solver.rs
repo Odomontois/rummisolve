@@ -1,20 +1,18 @@
-use std::{
-    any::TypeId,
-    collections::{BTreeSet, HashMap},
-    hash::Hash,
-    marker::PhantomData,
-    mem::take,
-    ops::{Add, AddAssign, IndexMut, SubAssign},
-    slice::SliceIndex,
-};
+#![allow(unused)]
+
+mod address;
+mod linked;
+
+use std::{any::TypeId, collections::BTreeSet};
 
 use derivative::Derivative;
 use std::fmt::Debug;
-use std::num::NonZero;
-use std::ops::Index;
+
+pub(crate) use address::{Address, Count, Ix};
+pub(crate) use linked::{LinkedList, LinkedNode};
 
 #[derive(Debug, Clone, Copy)]
-struct ElementHeader<C, I> {
+pub(crate) struct ElementHeader<C, I> {
     first: Option<I>,
     amount: C,
 }
@@ -56,7 +54,7 @@ struct DancingLinks<C, I> {
 
 type DancingLinksOf<C> = DancingLinks<C, <C as Count>::Idx>;
 
-impl<C: Count<Idx = I>, I: Address> DancingLinks<C, I> {
+impl<I: Address> DancingLinks<I::Count, I> {
     fn new(xs: impl IntoIterator<Item = (usize, usize)>) -> Self {
         let mut dl = Self::default();
         let mut builder = builder::DancingLinksBuilder::new(&mut dl);
@@ -68,7 +66,7 @@ impl<C: Count<Idx = I>, I: Address> DancingLinks<C, I> {
         dl
     }
 
-    fn on_element_change(&mut self, i: I, f: impl FnOnce(&mut C)) {
+    fn on_element_change(&mut self, i: I, f: impl FnOnce(&mut I::Count)) {
         let hd = &mut self.elements[Ix(i)];
         self.element_choose.remove(&(hd.amount, i));
         f(&mut hd.amount);
@@ -91,7 +89,7 @@ impl<C: Count<Idx = I>, I: Address> DancingLinks<C, I> {
         let elem = &mut self.elements[Ix(elem_ix)];
         elem.amount.decrease();
         self.backstack.push(Backstack::Element(elem_ix));
-        if elem.amount == C::ZERO {
+        if elem.amount == I::Count::ZERO {
             let mut cur = elem.first;
             while let Some(i) = cur {
                 let cell = self.cells[Ix(i)];
@@ -119,88 +117,21 @@ impl<C: Count<Idx = I>, I: Address> DancingLinks<C, I> {
 
     fn remove_cell(&mut self, i: I) -> Option<()> {
         let cell = self.cells[Ix(i)];
-        self.set_list(cell.set).delete(i)?;
-        self.on_element_change(i, C::decrease);
         self.backstack.push(Backstack::Cell(i));
+        self.set_list(cell.set).delete(i);
+        self.elements[Ix(i)].first?;
+        self.on_element_change(i, I::Count::decrease);
         DONE
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
-struct LinkedNode<I> {
-    prev: Option<I>,
-    next: Option<I>,
-}
 #[derive(Default, Debug, Clone, Copy)]
 struct Cell<I> {
     set_list: LinkedNode<I>,
     set: I,
     element: I,
 }
-
-trait Count: Copy + Eq + Ord + SubAssign + AddAssign + 'static {
-    type Idx: Address;
-    const ONE: Self;
-    const ZERO: Self;
-    fn decrease(&mut self) {
-        *self -= Self::ONE
-    }
-
-    fn increase(&mut self) {
-        *self += Self::ONE
-    }
-}
-
-trait Address: Copy + Eq + Ord + TryFrom<NonZero<usize>> + TryInto<NonZero<usize>> + 'static {
-    type Count: Count;
-    const ONE: Self;
-    fn address(self) -> usize {
-        self.try_into().map_or(1, <_>::into) - 1
-    }
-
-    fn from_address(address: usize) -> Self {
-        NonZero::new(address + 1)
-            .and_then(|x| x.try_into().ok())
-            .unwrap()
-    }
-}
-
-struct Ix<I>(I);
-
-impl<A, I: Address> Index<Ix<I>> for Vec<A> {
-    type Output = A;
-
-    fn index(&self, index: Ix<I>) -> &Self::Output {
-        &self[index.0.address()]
-    }
-}
-
-impl<A, I: Address> IndexMut<Ix<I>> for Vec<A> {
-    fn index_mut(&mut self, index: Ix<I>) -> &mut Self::Output {
-        &mut self[index.0.address()]
-    }
-}
-macro_rules! impl_addressable {
-    ($($t:ty),*) => {
-        $(
-            impl Address for NonZero<$t> {
-                type Count = $t;
-                const ONE: Self = NonZero::new(1).unwrap();
-            }
-
-            impl Count for $t{
-                type Idx = NonZero<$t>;
-                const ONE: $t = 1;
-                const ZERO: $t = 0;
-            }
-        )*
-    };
-}
-
-impl_addressable!(u8, u16, u32, u64, usize);
-
 mod builder {
-    use std::{cell, collections::HashMap, hash::Hash};
 
     use super::*;
 
@@ -209,8 +140,8 @@ mod builder {
         dl: &'a mut DancingLinks<C, C::Idx>,
     }
 
-    impl<'a, C: Count<Idx = I>, I: Address> DancingLinksBuilder<'a, C, I> {
-        pub(super) fn new(dl: &'a mut DancingLinks<C, C::Idx>) -> Self {
+    impl<'a, I: Address> DancingLinksBuilder<'a, I::Count, I> {
+        pub(super) fn new(dl: &'a mut DancingLinks<I::Count, I>) -> Self {
             Self { dl }
         }
 
@@ -246,25 +177,7 @@ mod builder {
     }
 }
 
-trait LinkedList<I: Address> {
-    fn head(&mut self) -> &mut Option<I>;
-    fn node(&mut self, ix: I) -> &mut LinkedNode<I>;
-
-    fn delete(&mut self, i: I) -> Option<()> {
-        let node = *self.node(i);
-        if let Some(prev) = node.prev {
-            self.node(prev).next = node.next;
-        } else {
-            *self.head() = node.next;
-        }
-        if let Some(next) = node.next {
-            self.node(next).prev = node.prev
-        }
-        (*self.head())?;
-        DONE
-    }
-}
-
+#[cfg(test)]
 mod tests {
     use crate::model::solver::{DancingLinks, DancingLinksOf};
 
@@ -284,4 +197,10 @@ fn lols() {
     lol::<Vec<Option<String>>>();
     lol::<Vec<Option<String>>>();
     lol::<([&'static u64; 4])>();
+}
+
+struct ChooseMin<I> {
+    current_min_level: I,
+    levels: Vec<Option<I>>,
+    list: Vec<LinkedNode<I>>,
 }

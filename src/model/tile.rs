@@ -59,7 +59,7 @@ impl Value {
     }
 
     pub fn from_code(code: u64) -> Option<Self> {
-        if code < 1 || code > 13 {
+        if !(1..=13).contains(&code) {
             return None;
         }
         Some(Self(code as u8))

@@ -21,7 +21,7 @@ pub fn TileLine(props: &Props) -> Html {
     } = props;
     let tiles = tiles.into_iter();
     let tiles = tiles.map(|tile| {
-        let on_click = on_remove.reform(move |_| tile.clone());
+        let on_click = on_remove.reform(move |_| tile);
         html! {
             <Tile {tile} {on_click} {disabled}/>
         }

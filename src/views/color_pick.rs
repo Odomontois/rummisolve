@@ -22,7 +22,7 @@ pub fn ColorPick(props: &Props) -> Html {
 
     let class = classes!(
         "button",
-        is_chosen.then(|| "selected"),
+        is_chosen.then_some("selected"),
         format!("pick-{color_name}")
     );
     let onclick = Callback::from(move |_| {
