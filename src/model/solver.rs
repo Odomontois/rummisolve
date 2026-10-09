@@ -199,8 +199,3 @@ fn lols() {
     lol::<([&'static u64; 4])>();
 }
 
-struct ChooseMin<I> {
-    current_min_level: I,
-    levels: Vec<Option<I>>,
-    list: Vec<LinkedNode<I>>,
-}
